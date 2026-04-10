@@ -33,5 +33,5 @@ Note: the Jaunch launcher's `--run` flag has known issues (fiji/fiji#416); use `
 ## Configuration
 
 - Port: `8765` (override via `FIJI_MCP_PORT`, read by both Python and Java)
-- Script timeout: 60s
+- Default execution hard ceiling: 600s (configurable per call via `hard_timeout_seconds`); opt-in long-poll via `soft_timeout_seconds` plus `wait_for_execution` and `kill_execution` — see `docs/superpowers/specs/2026-04-10-execution-result-envelope-design.md`
 - WebSocket connect timeout: 5s

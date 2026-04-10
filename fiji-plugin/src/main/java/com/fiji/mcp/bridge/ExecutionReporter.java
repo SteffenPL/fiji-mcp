@@ -23,6 +23,8 @@ public class ExecutionReporter {
         return t;
     });
     private final AtomicLong counter = new AtomicLong(0);
+    private final ConcurrentHashMap<String, Slot> active = new ConcurrentHashMap<>();
+    private volatile String currentId;
 
     public ExecutionReporter(Supplier<String> logSnapshot,
                              Supplier<String> activeImageTitle) {
@@ -34,6 +36,7 @@ public class ExecutionReporter {
                                   int hardTimeoutSeconds, Callable<Object> body) {
         long startMillis = System.currentTimeMillis();
         String stdoutBefore = logSnapshot.get();
+        String execId = "exec-" + counter.incrementAndGet();
 
         Callable<Object> wrapped = () -> {
             SourceTracker.setMcpActive(true);
@@ -45,20 +48,22 @@ public class ExecutionReporter {
         };
 
         Future<Object> future = worker.submit(wrapped);
-        long waitSeconds = softTimeoutSeconds != null ? softTimeoutSeconds : hardTimeoutSeconds;
+        Slot slot = new Slot(execId, type, future, startMillis, stdoutBefore, hardTimeoutSeconds);
+        slot.hardCancel = scheduler.schedule(
+                () -> internalCancel(slot, CancelReason.HARD_TIMEOUT),
+                hardTimeoutSeconds, TimeUnit.SECONDS);
+        active.put(execId, slot);
+        currentId = execId;
 
-        try {
-            Object value = future.get(waitSeconds, TimeUnit.SECONDS);
-            return buildCompleted(type, value, null, stdoutBefore, startMillis);
-        } catch (ExecutionException e) {
-            return buildCompleted(type, null, e.getCause(), stdoutBefore, startMillis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return buildCompleted(type, null, e, stdoutBefore, startMillis);
-        } catch (TimeoutException e) {
-            // Will be expanded in Task 4 to differentiate soft (running) vs hard (TimeoutError).
-            return buildCompleted(type, null, e, stdoutBefore, startMillis);
+        return awaitOrRunning(slot, softTimeoutSeconds);
+    }
+
+    public JsonObject waitFor(String executionId, Integer softTimeoutSeconds) {
+        Slot slot = active.get(executionId);
+        if (slot == null) {
+            return buildUnknownExecution(executionId);
         }
+        return awaitOrRunning(slot, softTimeoutSeconds);
     }
 
     public void shutdown() {
@@ -66,18 +71,95 @@ public class ExecutionReporter {
         scheduler.shutdownNow();
     }
 
+    // ── core wait/build logic ─────────────────────────────────────────
+
+    private JsonObject awaitOrRunning(Slot slot, Integer softTimeoutSeconds) {
+        try {
+            Object value;
+            if (softTimeoutSeconds == null) {
+                // Block until completion or hard-timeout cancellation.
+                value = slot.future.get();
+            } else {
+                value = slot.future.get(softTimeoutSeconds, TimeUnit.SECONDS);
+            }
+            reap(slot);
+            return buildCompleted(slot, value, null);
+        } catch (TimeoutException e) {
+            return buildRunning(slot);
+        } catch (CancellationException e) {
+            reap(slot);
+            Throwable error = slot.cancelReason == CancelReason.HARD_TIMEOUT
+                    ? new HardTimeoutException(slot.hardTimeoutSeconds)
+                    : new KilledException();
+            return buildCompleted(slot, null, error);
+        } catch (ExecutionException e) {
+            reap(slot);
+            return buildCompleted(slot, null, e.getCause());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return buildCompleted(slot, null, e);
+        }
+    }
+
+    private void internalCancel(Slot slot, CancelReason reason) {
+        slot.cancelReason = reason;
+        slot.future.cancel(true);
+        try {
+            ij.Macro.abort();
+        } catch (NoClassDefFoundError | RuntimeException ignored) {
+            // Macro.abort() requires the IJ runtime; in unit tests it is absent.
+        }
+    }
+
+    private void reap(Slot slot) {
+        if (slot.hardCancel != null) {
+            slot.hardCancel.cancel(false);
+        }
+        active.remove(slot.id);
+        if (slot.id.equals(currentId)) {
+            currentId = null;
+        }
+    }
+
     // ── envelope construction ─────────────────────────────────────────
 
-    private JsonObject buildCompleted(String type, Object value, Throwable error,
-                                      String stdoutBefore, long startMillis) {
+    private JsonObject buildCompleted(Slot slot, Object value, Throwable error) {
         JsonObject env = new JsonObject();
         env.addProperty("status", "completed");
-        env.addProperty("stdout", diff(stdoutBefore, logSnapshot.get()));
+        env.addProperty("stdout", diff(slot.stdoutBefore, logSnapshot.get()));
         env.add("value", value == null ? JsonNull.INSTANCE
                                        : new JsonPrimitive(String.valueOf(value)));
         env.add("error", error == null ? JsonNull.INSTANCE
-                                       : buildError(error, type));
-        env.addProperty("duration_ms", System.currentTimeMillis() - startMillis);
+                                       : buildError(error, slot.type));
+        env.addProperty("duration_ms", System.currentTimeMillis() - slot.startMillis);
+        env.add("execution_id", JsonNull.INSTANCE);
+        env.addProperty("active_image", activeImageTitle.get());
+        return env;
+    }
+
+    private JsonObject buildRunning(Slot slot) {
+        JsonObject env = new JsonObject();
+        env.addProperty("status", "running");
+        env.addProperty("stdout", diff(slot.stdoutBefore, logSnapshot.get()));
+        env.add("value", JsonNull.INSTANCE);
+        env.add("error", JsonNull.INSTANCE);
+        env.addProperty("duration_ms", System.currentTimeMillis() - slot.startMillis);
+        env.addProperty("execution_id", slot.id);
+        env.addProperty("active_image", activeImageTitle.get());
+        return env;
+    }
+
+    private JsonObject buildUnknownExecution(String requestedId) {
+        JsonObject env = new JsonObject();
+        env.addProperty("status", "completed");
+        env.addProperty("stdout", "");
+        env.add("value", JsonNull.INSTANCE);
+        JsonObject err = new JsonObject();
+        err.addProperty("message", "No execution with id " + requestedId);
+        err.addProperty("type", "UnknownExecution");
+        err.add("line", JsonNull.INSTANCE);
+        env.add("error", err);
+        env.addProperty("duration_ms", 0);
         env.add("execution_id", JsonNull.INSTANCE);
         env.addProperty("active_image", activeImageTitle.get());
         return env;
@@ -126,6 +208,31 @@ public class ExecutionReporter {
         if (before == null) return after;
         if (after.startsWith(before)) return after.substring(before.length());
         return after;
+    }
+
+    // ── inner types ───────────────────────────────────────────────────
+
+    private enum CancelReason { HARD_TIMEOUT, USER_KILL }
+
+    private static class Slot {
+        final String id;
+        final String type;
+        final Future<Object> future;
+        final long startMillis;
+        final String stdoutBefore;
+        final int hardTimeoutSeconds;
+        volatile ScheduledFuture<?> hardCancel;
+        volatile CancelReason cancelReason;
+
+        Slot(String id, String type, Future<Object> future,
+             long startMillis, String stdoutBefore, int hardTimeoutSeconds) {
+            this.id = id;
+            this.type = type;
+            this.future = future;
+            this.startMillis = startMillis;
+            this.stdoutBefore = stdoutBefore;
+            this.hardTimeoutSeconds = hardTimeoutSeconds;
+        }
     }
 
     static class KilledException extends RuntimeException {

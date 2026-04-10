@@ -75,4 +75,91 @@ class ExecutionReporterTest {
         JsonObject err = result.getAsJsonObject("error");
         assertEquals(12, err.get("line").getAsInt());
     }
+
+    @Test
+    void runReported_softTimeoutReturnsRunningEnvelope() throws Exception {
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        JsonObject result = reporter.runReported("macro", 1, 60, () -> {
+            mockLog.set("partial output\n");
+            release.await();
+            return "final value";
+        });
+
+        assertEquals("running", result.get("status").getAsString());
+        assertEquals("partial output\n", result.get("stdout").getAsString());
+        assertTrue(result.get("value").isJsonNull());
+        assertTrue(result.get("error").isJsonNull());
+        String execId = result.get("execution_id").getAsString();
+        assertNotNull(execId);
+        assertTrue(execId.startsWith("exec-"));
+
+        release.countDown();
+    }
+
+    @Test
+    void runReported_hardTimeoutWithoutSoftReturnsTimeoutError() throws Exception {
+        JsonObject result = reporter.runReported("macro", null, 1, () -> {
+            mockLog.set("partial\n");
+            Thread.sleep(10_000);
+            return null;
+        });
+
+        assertEquals("completed", result.get("status").getAsString());
+        JsonObject err = result.getAsJsonObject("error");
+        assertEquals("TimeoutError", err.get("type").getAsString());
+        assertEquals("partial\n", result.get("stdout").getAsString());
+    }
+
+    @Test
+    void runReported_completionBeforeHardTimeoutCancelsTheScheduledKill() {
+        JsonObject result = reporter.runReported("macro", null, 30, () -> "done");
+        assertEquals("completed", result.get("status").getAsString());
+        assertEquals("done", result.get("value").getAsString());
+        // No assertion on the scheduler directly — but if the scheduled cancellation
+        // wasn't itself cancelled it would later interfere with subsequent runs.
+        JsonObject second = reporter.runReported("macro", null, 30, () -> "again");
+        assertEquals("again", second.get("value").getAsString());
+    }
+
+    @Test
+    void waitFor_returnsCompletedEnvelopeOnceWorkerFinishes() throws Exception {
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        JsonObject running = reporter.runReported("macro", 1, 60, () -> {
+            release.await();
+            mockLog.set("done\n");
+            return "final value";
+        });
+        String execId = running.get("execution_id").getAsString();
+
+        release.countDown();
+
+        JsonObject completed = reporter.waitFor(execId, null);
+        assertEquals("completed", completed.get("status").getAsString());
+        assertEquals("final value", completed.get("value").getAsString());
+        assertEquals("done\n", completed.get("stdout").getAsString());
+    }
+
+    @Test
+    void waitFor_unknownIdReturnsUnknownExecutionError() {
+        JsonObject result = reporter.waitFor("exec-999", 1);
+        assertEquals("completed", result.get("status").getAsString());
+        JsonObject err = result.getAsJsonObject("error");
+        assertEquals("UnknownExecution", err.get("type").getAsString());
+    }
+
+    @Test
+    void waitFor_stillRunningReturnsAnotherRunningEnvelope() throws Exception {
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        JsonObject first = reporter.runReported("macro", 1, 60, () -> {
+            release.await();
+            return null;
+        });
+        String execId = first.get("execution_id").getAsString();
+
+        JsonObject second = reporter.waitFor(execId, 1);
+        assertEquals("running", second.get("status").getAsString());
+        assertEquals(execId, second.get("execution_id").getAsString());
+
+        release.countDown();
+    }
 }

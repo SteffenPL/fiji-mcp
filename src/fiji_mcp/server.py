@@ -121,6 +121,64 @@ async def set_event_categories(categories: list[str]) -> dict:
     return await client.send_request("set_event_categories", {"categories": categories})
 
 
+# ── Local tools (handled by Python server) ──────────────────────────
+
+
+@mcp.tool
+async def get_recent_actions(
+    count: int = 20,
+    offset: int = 0,
+    source: str | None = None,
+    categories: list[str] | None = None,
+) -> dict:
+    """Read recent actions from the event log.
+
+    Actions include user interactions and MCP-triggered commands.
+    Use source='user' to see only what the biologist did.
+    """
+    events, total = _action_log.get_recent(
+        count=count, offset=offset, source=source, categories=categories
+    )
+    return {"actions": events, "total": total, "returned": len(events)}
+
+
+@mcp.tool
+async def export_actions_as_macro(
+    start: int,
+    end: int,
+    source: str | None = None,
+    categories: list[str] | None = None,
+) -> dict:
+    """Export a slice of the action log as a runnable ImageJ macro.
+
+    Indices are global (0-based). Negative indices count from the end.
+    Only command_finished events produce macro lines.
+    """
+    events, _ = _action_log.get_range(
+        start=start, end=end, source=source, categories=categories
+    )
+    macro = _events_to_macro(events)
+    return {"macro": macro, "event_count": len(events)}
+
+
+def _events_to_macro(events: list[dict]) -> str:
+    """Convert command events to IJ macro code."""
+    lines = ["// Auto-generated from fiji-mcp action log"]
+    for event in events:
+        if event.get("event") != "command_finished":
+            continue
+        data = event.get("data", {})
+        cmd = data.get("command", "")
+        args = data.get("args", "")
+        if args:
+            lines.append(f'run("{cmd}", "{args}");')
+        else:
+            lines.append(f'run("{cmd}");')
+    if len(lines) == 1:
+        lines.append("// No command events in the selected range")
+    return "\n".join(lines)
+
+
 def main():
     mcp.run()
 

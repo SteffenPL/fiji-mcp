@@ -19,18 +19,42 @@ def mock_client(monkeypatch):
 
 
 class TestRunIjMacro:
-    async def test_forwards_code(self, mock_client):
-        mock_client.send_request.return_value = {"output": "hello", "active_image": "t.tif"}
+    async def test_forwards_code_with_default_timeouts(self, mock_client):
+        mock_client.send_request.return_value = {
+            "status": "completed", "stdout": "hello", "value": None,
+            "error": None, "duration_ms": 5, "execution_id": None,
+            "active_image": "t.tif",
+        }
         result = await srv.run_ij_macro("print('hello');")
         mock_client.send_request.assert_called_once_with(
-            "run_ij_macro", {"code": "print('hello');"}
+            "run_ij_macro",
+            {"code": "print('hello');", "hard_timeout_seconds": 600},
+            timeout=610.0,
         )
-        assert result["output"] == "hello"
+        assert result["stdout"] == "hello"
 
     async def test_includes_args(self, mock_client):
         await srv.run_ij_macro("code", args="arg1")
         mock_client.send_request.assert_called_once_with(
-            "run_ij_macro", {"code": "code", "args": "arg1"}
+            "run_ij_macro",
+            {"code": "code", "hard_timeout_seconds": 600, "args": "arg1"},
+            timeout=610.0,
+        )
+
+    async def test_soft_timeout_is_only_sent_when_set(self, mock_client):
+        await srv.run_ij_macro("code", soft_timeout_seconds=30)
+        mock_client.send_request.assert_called_once_with(
+            "run_ij_macro",
+            {"code": "code", "hard_timeout_seconds": 600, "soft_timeout_seconds": 30},
+            timeout=610.0,
+        )
+
+    async def test_custom_hard_timeout_propagates_to_python_timeout(self, mock_client):
+        await srv.run_ij_macro("code", hard_timeout_seconds=3600)
+        mock_client.send_request.assert_called_once_with(
+            "run_ij_macro",
+            {"code": "code", "hard_timeout_seconds": 3600},
+            timeout=3610.0,
         )
 
 
@@ -38,7 +62,9 @@ class TestRunScript:
     async def test_forwards_language_and_code(self, mock_client):
         await srv.run_script("python", "print(1)")
         mock_client.send_request.assert_called_once_with(
-            "run_script", {"language": "python", "code": "print(1)"}
+            "run_script",
+            {"language": "python", "code": "print(1)", "hard_timeout_seconds": 600},
+            timeout=610.0,
         )
 
 
@@ -46,13 +72,49 @@ class TestRunCommand:
     async def test_forwards_command(self, mock_client):
         await srv.run_command("Gaussian Blur...", args="sigma=2")
         mock_client.send_request.assert_called_once_with(
-            "run_command", {"command": "Gaussian Blur...", "args": "sigma=2"}
+            "run_command",
+            {"command": "Gaussian Blur...", "hard_timeout_seconds": 600, "args": "sigma=2"},
+            timeout=610.0,
         )
 
     async def test_no_args(self, mock_client):
         await srv.run_command("Invert")
         mock_client.send_request.assert_called_once_with(
-            "run_command", {"command": "Invert"}
+            "run_command",
+            {"command": "Invert", "hard_timeout_seconds": 600},
+            timeout=610.0,
+        )
+
+
+class TestWaitForExecution:
+    async def test_forwards_execution_id_no_soft_timeout_default(self, mock_client):
+        await srv.wait_for_execution("exec-7")
+        mock_client.send_request.assert_called_once_with(
+            "wait_for_execution",
+            {"execution_id": "exec-7"},
+            timeout=3610.0,
+        )
+
+    async def test_with_explicit_soft_timeout(self, mock_client):
+        await srv.wait_for_execution("exec-7", soft_timeout_seconds=30)
+        mock_client.send_request.assert_called_once_with(
+            "wait_for_execution",
+            {"execution_id": "exec-7", "soft_timeout_seconds": 30},
+            timeout=40.0,
+        )
+
+
+class TestKillExecution:
+    async def test_with_id(self, mock_client):
+        await srv.kill_execution("exec-7")
+        mock_client.send_request.assert_called_once_with(
+            "kill_execution", {"execution_id": "exec-7"}
+        )
+
+    async def test_without_id(self, mock_client):
+        await srv.kill_execution()
+        mock_client.send_request.assert_called_once_with(
+            "kill_execution", {}
         )
 
 

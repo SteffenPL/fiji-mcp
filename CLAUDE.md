@@ -50,3 +50,4 @@ Design spec: `docs/superpowers/specs/2026-04-09-fiji-mcp-design.md`
 - Keep tools focused and composable — LLM composes via scripting, no curated wrappers like `gaussian_blur`
 - WebSocket protocol uses JSON with `type` field; request/response matched by `id`
 - Events (command_executed, image_opened, image_closed) are fire-and-forget from Fiji side
+- favour `rg` (ripgrep) over `grep`

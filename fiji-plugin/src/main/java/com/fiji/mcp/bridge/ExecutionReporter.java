@@ -66,6 +66,34 @@ public class ExecutionReporter {
         return awaitOrRunning(slot, softTimeoutSeconds);
     }
 
+    public JsonObject kill(String executionId) {
+        String targetId;
+        if (executionId == null) {
+            targetId = currentId;
+            if (targetId == null) {
+                return killResult(false, null, "no execution active");
+            }
+        } else {
+            targetId = executionId;
+        }
+
+        Slot slot = active.get(targetId);
+        if (slot == null) {
+            return killResult(false, null, "no such execution");
+        }
+
+        internalCancel(slot, CancelReason.USER_KILL);
+        return killResult(true, targetId, null);
+    }
+
+    private JsonObject killResult(boolean killed, String target, String reason) {
+        JsonObject result = new JsonObject();
+        result.addProperty("killed", killed);
+        if (target != null) result.addProperty("target", target);
+        if (reason != null) result.addProperty("reason", reason);
+        return result;
+    }
+
     public void shutdown() {
         worker.shutdownNow();
         scheduler.shutdownNow();

@@ -162,4 +162,56 @@ class ExecutionReporterTest {
 
         release.countDown();
     }
+
+    @Test
+    void kill_byIdInterruptsWorkerAndPropagatesKilledError() throws Exception {
+        java.util.concurrent.CountDownLatch started = new java.util.concurrent.CountDownLatch(1);
+        JsonObject running = reporter.runReported("macro", 1, 60, () -> {
+            mockLog.set("started\n");
+            started.countDown();
+            Thread.sleep(60_000);
+            return null;
+        });
+        String execId = running.get("execution_id").getAsString();
+        started.await();
+
+        JsonObject killResult = reporter.kill(execId);
+        assertTrue(killResult.get("killed").getAsBoolean());
+        assertEquals(execId, killResult.get("target").getAsString());
+
+        JsonObject afterKill = reporter.waitFor(execId, null);
+        assertEquals("completed", afterKill.get("status").getAsString());
+        assertEquals("Killed", afterKill.getAsJsonObject("error").get("type").getAsString());
+        assertEquals("started\n", afterKill.get("stdout").getAsString());
+    }
+
+    @Test
+    void kill_withoutIdKillsCurrentSlot() throws Exception {
+        java.util.concurrent.CountDownLatch started = new java.util.concurrent.CountDownLatch(1);
+        JsonObject running = reporter.runReported("macro", 1, 60, () -> {
+            started.countDown();
+            Thread.sleep(60_000);
+            return null;
+        });
+        String execId = running.get("execution_id").getAsString();
+        started.await();
+
+        JsonObject killResult = reporter.kill(null);
+        assertTrue(killResult.get("killed").getAsBoolean());
+        assertEquals(execId, killResult.get("target").getAsString());
+    }
+
+    @Test
+    void kill_unknownIdReturnsNotKilled() {
+        JsonObject killResult = reporter.kill("exec-999");
+        assertFalse(killResult.get("killed").getAsBoolean());
+        assertEquals("no such execution", killResult.get("reason").getAsString());
+    }
+
+    @Test
+    void kill_emptySlotReturnsNotKilled() {
+        JsonObject killResult = reporter.kill(null);
+        assertFalse(killResult.get("killed").getAsBoolean());
+        assertEquals("no execution active", killResult.get("reason").getAsString());
+    }
 }

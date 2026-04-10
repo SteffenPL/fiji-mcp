@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "fiji-mcp": {
+      "command": "uv",
+      "args": ["run", "--directory", "../..", "fiji-mcp"],
+      "env": {
+        "FIJI_MCP_PORT": "8765"
+      }
+    }
+  }
+}

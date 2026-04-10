@@ -1,53 +1,37 @@
 # fiji-mcp
 
-## Goal
-MCP server bridging LLM agents (Claude Code, Claude Desktop) with a running Fiji instance via WebSocket. Gives LLMs a scripting interface into a biologist's live Fiji session.
+MCP server bridging LLM agents with a running Fiji instance via WebSocket. Gives LLMs a scripting interface into a biologist's live Fiji session.
 
 ## Architecture
 
-Two components, one WebSocket connection:
-
 ```
-LLM Agent → (stdio MCP) → Python MCP Server → (ws://localhost:8765) → Fiji + Java Plugin
+LLM Agent → (stdio MCP) → Python server → (ws://localhost:8765) → Fiji + Java plugin
 ```
 
-- **fiji-mcp** (Python): MCP server (stdio transport), WebSocket client, event buffer. Lives in `src/fiji_mcp/`.
-- **fiji-mcp-bridge** (Java): Fiji plugin, WebSocket server, script executor, event emitter. Lives in `fiji-plugin/` (Maven project).
-
-Image data is file-based only (Fiji saves to temp dir, MCP returns paths). No base64 in the protocol.
+- **Python** (`src/fiji_mcp/`): fastmcp server, WebSocket client, event buffer
+- **Java** (`fiji-plugin/`): Fiji plugin, WebSocket server, script executor, event emitter
 
 Design spec: `docs/superpowers/specs/2026-04-09-fiji-mcp-design.md`
 
-## Technology Stack
+## Design principles
 
-| Component | Choice |
-|---|---|
-| Python packaging | `uv` with `pyproject.toml` |
-| MCP SDK | `fastmcp` 3.x (jlowin's PyPI package, stdio transport) |
-| Python WebSocket | `websockets` |
-| Java WebSocket | `org.java-websocket:Java-WebSocket` |
-| Java JSON | `gson` (already in Fiji at `Fiji/jars/gson-2.11.0.jar`) |
-| Java build | Maven, targeting JDK 21 |
+- Scripting-first: LLM composes via `run_ij_macro` / `run_script` / `run_command`, no curated wrappers
+- File-based image I/O: Fiji saves to temp, MCP returns paths — no base64 in the protocol
+- Requests matched to responses by `id`; events are fire-and-forget from Fiji's side
+
+## Java builds
+
+Fiji is installed locally in `Fiji/` (gitignored). The build needs the bundled Zulu JDK 21:
+
+```
+cd fiji-plugin && JAVA_HOME="../Fiji/java/macos-arm64/zulu21.42.19-ca-jdk21.0.7-macosx_aarch64/zulu-21.jdk/Contents/Home" mvn package -q
+cp target/fiji-mcp-bridge-0.1.0.jar ../Fiji/plugins/
+```
+
+Note: the Jaunch launcher's `--run` flag has known issues (fiji/fiji#416); use `./launch-fiji.sh` to start Fiji.
 
 ## Configuration
 
-- WebSocket port: `8765` (override via `FIJI_MCP_PORT` env var, read by both sides)
-- Script execution timeout: 60s default
+- Port: `8765` (override via `FIJI_MCP_PORT`, read by both Python and Java)
+- Script timeout: 60s
 - WebSocket connect timeout: 5s
-
-## Local Fiji
-
-- Fiji is installed locally in `Fiji/` (gitignored).
-- Bundled JDK: `Fiji/java/macos-arm64/zulu21.42.19-ca-jdk21.0.7-macosx_aarch64/zulu-21.jdk/Contents/Home`
-- The Jaunch launcher's `--run` flag has known issues (fiji/fiji#416). For headless macro testing, use direct Java invocation:
-  ```
-  JAVA_HOME="Fiji/java/macos-arm64/zulu21.42.19-ca-jdk21.0.7-macosx_aarch64/zulu-21.jdk/Contents/Home"
-  "$JAVA_HOME/bin/java" -cp "Fiji/jars/*" ij.ImageJ --headless -eval '<macro code>' -batch
-  ```
-
-## Development
-
-- Keep tools focused and composable — LLM composes via scripting, no curated wrappers like `gaussian_blur`
-- WebSocket protocol uses JSON with `type` field; request/response matched by `id`
-- Events (command_executed, image_opened, image_closed) are fire-and-forget from Fiji side
-- favour `rg` (ripgrep) over `grep`

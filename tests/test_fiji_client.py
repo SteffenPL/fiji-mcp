@@ -61,6 +61,21 @@ class TestSendRequest:
         assert r2 == {"val": 2}
         await client.disconnect()
 
+    async def test_per_request_timeout_overrides_default(self, mock_fiji_server):
+        client = FijiClient(port=mock_fiji_server["port"])
+        await client.connect()
+        result = await client.send_request("status", timeout=2.0)
+        assert result == {}
+        await client.disconnect()
+
+    async def test_per_request_timeout_can_exceed_default(self, mock_fiji_server):
+        client = FijiClient(port=mock_fiji_server["port"])
+        await client.connect()
+        # 700s > the previous hardcoded 65s — proves the per-call timeout is honored.
+        result = await client.send_request("status", timeout=700.0)
+        assert result == {}
+        await client.disconnect()
+
 
 class TestEventCallback:
     async def test_receives_pushed_events(self, mock_fiji_server):

@@ -56,7 +56,8 @@ class FijiClient:
             self._ws = None
 
     async def send_request(
-        self, action: str, params: dict | None = None
+        self, action: str, params: dict | None = None,
+        timeout: float = 65.0,
     ) -> dict:
         if not self.connected:
             await self.connect()
@@ -72,7 +73,7 @@ class FijiClient:
         await self._ws.send(json.dumps(request))
 
         try:
-            response = await asyncio.wait_for(future, timeout=65.0)
+            response = await asyncio.wait_for(future, timeout=timeout)
         except asyncio.TimeoutError:
             raise FijiError(f"Timeout waiting for response to {action}")
         finally:

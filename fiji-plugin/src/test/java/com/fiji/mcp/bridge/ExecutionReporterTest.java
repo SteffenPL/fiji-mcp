@@ -48,4 +48,31 @@ class ExecutionReporterTest {
         assertEquals("hello\nworld\n", result.get("stdout").getAsString());
         assertTrue(result.get("value").isJsonNull());
     }
+
+    @Test
+    void runReported_callableThrowingProducesErrorEnvelope() {
+        JsonObject result = reporter.runReported("macro", null, 60, () -> {
+            mockLog.set("started\n");
+            throw new RuntimeException("boom");
+        });
+
+        assertEquals("completed", result.get("status").getAsString());
+        assertEquals("started\n", result.get("stdout").getAsString());
+        assertTrue(result.get("value").isJsonNull());
+
+        JsonObject err = result.getAsJsonObject("error");
+        assertEquals("boom", err.get("message").getAsString());
+        assertEquals("MacroError", err.get("type").getAsString());
+        assertTrue(err.get("line").isJsonNull());
+    }
+
+    @Test
+    void runReported_extractsLineFromIjMacroErrorMessage() {
+        JsonObject result = reporter.runReported("macro", null, 60, () -> {
+            throw new RuntimeException("Undefined identifier in line 12: foo");
+        });
+
+        JsonObject err = result.getAsJsonObject("error");
+        assertEquals(12, err.get("line").getAsInt());
+    }
 }

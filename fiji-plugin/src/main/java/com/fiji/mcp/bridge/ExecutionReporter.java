@@ -83,13 +83,42 @@ public class ExecutionReporter {
         return env;
     }
 
+    private static final java.util.regex.Pattern IJ_LINE_PATTERN =
+            java.util.regex.Pattern.compile("in line (\\d+)");
+
     private JsonObject buildError(Throwable t, String typeHint) {
         JsonObject err = new JsonObject();
-        err.addProperty("message", t.getMessage() == null ? t.getClass().getSimpleName()
-                                                          : t.getMessage());
-        err.addProperty("type", t.getClass().getSimpleName());
+        String message = t.getMessage() == null ? t.getClass().getSimpleName()
+                                                : t.getMessage();
+        err.addProperty("message", message);
+        err.addProperty("type", classifyType(t, typeHint));
         err.add("line", JsonNull.INSTANCE);
+
+        Throwable cur = t;
+        while (cur != null) {
+            if (cur instanceof javax.script.ScriptException sx && sx.getLineNumber() > 0) {
+                err.addProperty("line", sx.getLineNumber());
+                return err;
+            }
+            cur = cur.getCause();
+        }
+
+        java.util.regex.Matcher m = IJ_LINE_PATTERN.matcher(message);
+        if (m.find()) {
+            err.addProperty("line", Integer.parseInt(m.group(1)));
+        }
         return err;
+    }
+
+    private String classifyType(Throwable t, String typeHint) {
+        if (t instanceof KilledException) return "Killed";
+        if (t instanceof HardTimeoutException) return "TimeoutError";
+        return switch (typeHint) {
+            case "macro"   -> "MacroError";
+            case "script"  -> "ScriptError";
+            case "command" -> "CommandError";
+            default        -> "ExecutionError";
+        };
     }
 
     private String diff(String before, String after) {
@@ -97,5 +126,15 @@ public class ExecutionReporter {
         if (before == null) return after;
         if (after.startsWith(before)) return after.substring(before.length());
         return after;
+    }
+
+    static class KilledException extends RuntimeException {
+        KilledException() { super("Execution killed by kill_execution request"); }
+    }
+
+    static class HardTimeoutException extends RuntimeException {
+        HardTimeoutException(int seconds) {
+            super("Execution exceeded hard timeout of " + seconds + "s");
+        }
     }
 }

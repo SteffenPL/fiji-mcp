@@ -34,6 +34,12 @@ public class ExecutionReporter {
 
     public JsonObject runReported(String type, Integer softTimeoutSeconds,
                                   int hardTimeoutSeconds, Callable<Object> body) {
+        return runReported(type, softTimeoutSeconds, hardTimeoutSeconds, body, null);
+    }
+
+    public JsonObject runReported(String type, Integer softTimeoutSeconds,
+                                  int hardTimeoutSeconds, Callable<Object> body,
+                                  Runnable cancelHook) {
         String existing = currentId;
         if (existing != null && active.containsKey(existing)) {
             return buildExecutionInProgress(existing);
@@ -53,7 +59,8 @@ public class ExecutionReporter {
         };
 
         Future<Object> future = worker.submit(wrapped);
-        Slot slot = new Slot(execId, type, future, startMillis, stdoutBefore, hardTimeoutSeconds);
+        Slot slot = new Slot(execId, type, future, startMillis, stdoutBefore,
+                             hardTimeoutSeconds, cancelHook);
         slot.hardCancel = scheduler.schedule(
                 () -> internalCancel(slot, CancelReason.HARD_TIMEOUT),
                 hardTimeoutSeconds, TimeUnit.SECONDS);
@@ -137,10 +144,13 @@ public class ExecutionReporter {
     private void internalCancel(Slot slot, CancelReason reason) {
         slot.cancelReason = reason;
         slot.future.cancel(true);
-        try {
-            ij.Macro.abort();
-        } catch (NoClassDefFoundError | RuntimeException ignored) {
-            // Macro.abort() requires the IJ runtime; in unit tests it is absent.
+        if (slot.cancelHook != null) {
+            try {
+                slot.cancelHook.run();
+            } catch (Throwable t) {
+                // A misbehaving hook must not corrupt reporter state or leak the slot.
+                System.err.println("[fiji-mcp] cancel hook threw: " + t);
+            }
         }
     }
 
@@ -272,17 +282,20 @@ public class ExecutionReporter {
         final long startMillis;
         final String stdoutBefore;
         final int hardTimeoutSeconds;
+        final Runnable cancelHook;
         volatile ScheduledFuture<?> hardCancel;
         volatile CancelReason cancelReason;
 
         Slot(String id, String type, Future<Object> future,
-             long startMillis, String stdoutBefore, int hardTimeoutSeconds) {
+             long startMillis, String stdoutBefore, int hardTimeoutSeconds,
+             Runnable cancelHook) {
             this.id = id;
             this.type = type;
             this.future = future;
             this.startMillis = startMillis;
             this.stdoutBefore = stdoutBefore;
             this.hardTimeoutSeconds = hardTimeoutSeconds;
+            this.cancelHook = cancelHook;
         }
     }
 

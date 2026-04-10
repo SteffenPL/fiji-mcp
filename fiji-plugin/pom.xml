@@ -22,6 +22,8 @@
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
+        <!-- Override pom-scijava's maven.compiler.release=8 -->
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <license.copyrightOwners>N/A</license.copyrightOwners>
         <license.licenseName>N/A</license.licenseName>

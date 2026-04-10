@@ -1,2 +1,32 @@
-# Fiji installation
-Fiji/
+# Fiji installation (top-level only)
+/Fiji/
+                                                                                                                                    
+__pycache__/                                                                                                                          
+*.py[cod]                                                                                                                             
+*.pyo                                                                                                                                 
+*.egg-info/                                                                                                                           
+dist/                                                                                                                                 
+build/                                                                                                                                
+.venv/                                                                                                                                
+*.egg                                                                                                                                 
+                                                                                                                                        
+# uv                                                                                                                                  
+.python-version
+
+# pytest
+.pytest_cache/
+
+# Java / Maven
+fiji-plugin/target/
+*.class
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store

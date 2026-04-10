@@ -12,6 +12,7 @@
     "superpowers@claude-plugins-official": true,
     "claude-md-management@claude-plugins-official": true,
     "mcp-server-dev@claude-plugins-official": true,
-    "astral@astral-sh": true
+    "astral@astral-sh": true,
+    "skill-creator@claude-plugins-official": true
   }
 }

@@ -24,34 +24,136 @@ async def _get_client() -> FijiClient:
     return _client
 
 
-@mcp.tool
-async def run_ij_macro(code: str, args: str | None = None) -> dict:
-    """Run an ImageJ1 macro in Fiji."""
-    client = await _get_client()
-    params: dict = {"code": code}
-    if args is not None:
-        params["args"] = args
-    return await client.send_request("run_ij_macro", params)
+_DEFAULT_HARD_TIMEOUT_SECONDS = 600
+_TIMEOUT_BUFFER_SECONDS = 10
+
+
+def _python_timeout(hard_timeout_seconds: int) -> float:
+    """Python-side wait must outlast the bridge-side hard timeout."""
+    return float(hard_timeout_seconds + _TIMEOUT_BUFFER_SECONDS)
 
 
 @mcp.tool
-async def run_script(language: str, code: str, args: str | None = None) -> dict:
-    """Run a script in the given scripting language in Fiji."""
+async def run_ij_macro(
+    code: str,
+    args: str | None = None,
+    soft_timeout_seconds: int | None = None,
+    hard_timeout_seconds: int = _DEFAULT_HARD_TIMEOUT_SECONDS,
+) -> dict:
+    """Run an ImageJ1 macro in Fiji.
+
+    Returns the unified execution envelope. By default the call blocks until
+    the macro completes or the 600-second hard ceiling auto-kills it. Pass
+    soft_timeout_seconds to opt into the long-poll path: the call returns a
+    "running" envelope after that many seconds with an execution_id you can
+    pass to wait_for_execution or kill_execution. Pass a larger
+    hard_timeout_seconds for known-long operations.
+    """
     client = await _get_client()
-    params: dict = {"language": language, "code": code}
+    params: dict = {"code": code, "hard_timeout_seconds": hard_timeout_seconds}
     if args is not None:
         params["args"] = args
-    return await client.send_request("run_script", params)
+    if soft_timeout_seconds is not None:
+        params["soft_timeout_seconds"] = soft_timeout_seconds
+    return await client.send_request(
+        "run_ij_macro", params, timeout=_python_timeout(hard_timeout_seconds)
+    )
 
 
 @mcp.tool
-async def run_command(command: str, args: str | None = None) -> dict:
-    """Run a named Fiji/ImageJ command, optionally with arguments."""
+async def run_script(
+    language: str,
+    code: str,
+    args: str | None = None,
+    soft_timeout_seconds: int | None = None,
+    hard_timeout_seconds: int = _DEFAULT_HARD_TIMEOUT_SECONDS,
+) -> dict:
+    """Run a script in the given scripting language in Fiji.
+
+    Returns the unified execution envelope. See run_ij_macro for the lifecycle.
+    """
     client = await _get_client()
-    params: dict = {"command": command}
+    params: dict = {
+        "language": language,
+        "code": code,
+        "hard_timeout_seconds": hard_timeout_seconds,
+    }
     if args is not None:
         params["args"] = args
-    return await client.send_request("run_command", params)
+    if soft_timeout_seconds is not None:
+        params["soft_timeout_seconds"] = soft_timeout_seconds
+    return await client.send_request(
+        "run_script", params, timeout=_python_timeout(hard_timeout_seconds)
+    )
+
+
+@mcp.tool
+async def run_command(
+    command: str,
+    args: str | None = None,
+    soft_timeout_seconds: int | None = None,
+    hard_timeout_seconds: int = _DEFAULT_HARD_TIMEOUT_SECONDS,
+) -> dict:
+    """Run a named Fiji/ImageJ command, optionally with arguments.
+
+    Returns the unified execution envelope. value is always null because
+    IJ.run has no return path.
+    """
+    client = await _get_client()
+    params: dict = {
+        "command": command,
+        "hard_timeout_seconds": hard_timeout_seconds,
+    }
+    if args is not None:
+        params["args"] = args
+    if soft_timeout_seconds is not None:
+        params["soft_timeout_seconds"] = soft_timeout_seconds
+    return await client.send_request(
+        "run_command", params, timeout=_python_timeout(hard_timeout_seconds)
+    )
+
+
+@mcp.tool
+async def wait_for_execution(
+    execution_id: str,
+    soft_timeout_seconds: int | None = None,
+) -> dict:
+    """Wait for a previously-started execution to complete.
+
+    Use this when run_ij_macro / run_script / run_command returned a "running"
+    envelope and you want to keep waiting. Returns either a completed envelope
+    or another running envelope (call again to keep waiting). With
+    soft_timeout_seconds == None (default), waits until completion or until the
+    original execution's hard timeout fires. The hard timeout was set on the
+    original call and continues to apply.
+    """
+    client = await _get_client()
+    params: dict = {"execution_id": execution_id}
+    if soft_timeout_seconds is not None:
+        params["soft_timeout_seconds"] = soft_timeout_seconds
+    # If the caller set a soft timeout, the bridge responds within that window
+    # (either completed or running). Otherwise we don't know the original hard
+    # limit, so default to 3600s (covers the common 600s hard default with
+    # margin). For longer waits, the LLM should chunk via soft_timeout_seconds.
+    py_wait = soft_timeout_seconds if soft_timeout_seconds is not None else 3600
+    return await client.send_request(
+        "wait_for_execution", params, timeout=_python_timeout(py_wait)
+    )
+
+
+@mcp.tool
+async def kill_execution(execution_id: str | None = None) -> dict:
+    """Kill a running execution.
+
+    If execution_id is given, kills that specific execution. If omitted, kills
+    whatever is currently active in the single execution slot — useful for
+    unsticking a hung lock when no id is known.
+    """
+    client = await _get_client()
+    params: dict = {}
+    if execution_id is not None:
+        params["execution_id"] = execution_id
+    return await client.send_request("kill_execution", params)
 
 
 @mcp.tool

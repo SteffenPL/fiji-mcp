@@ -216,6 +216,20 @@ class ExecutionReporterTest {
     }
 
     @Test
+    void runReported_setsSourceTrackerOnWorkerThreadOnly() {
+        java.util.concurrent.atomic.AtomicBoolean onWorker = new java.util.concurrent.atomic.AtomicBoolean(false);
+        SourceTracker.setMcpActive(false);
+
+        reporter.runReported("macro", null, 60, () -> {
+            onWorker.set(SourceTracker.isMcpActive());
+            return null;
+        });
+
+        assertTrue(onWorker.get(), "MCP active flag should be set on the worker thread");
+        assertFalse(SourceTracker.isMcpActive(), "Calling thread must be unaffected");
+    }
+
+    @Test
     void runReported_secondCallWhileFirstActiveIsRejected() throws Exception {
         java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
         JsonObject first = reporter.runReported("macro", 1, 60, () -> {

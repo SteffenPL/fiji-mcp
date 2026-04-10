@@ -23,7 +23,7 @@ Design spec: `docs/superpowers/specs/2026-04-09-fiji-mcp-design.md`
 | Component | Choice |
 |---|---|
 | Python packaging | `uv` with `pyproject.toml` |
-| MCP SDK | `mcp` (Python, stdio transport) |
+| MCP SDK | `fastmcp` 3.x (jlowin's PyPI package, stdio transport) |
 | Python WebSocket | `websockets` |
 | Java WebSocket | `org.java-websocket:Java-WebSocket` |
 | Java JSON | `gson` (already in Fiji at `Fiji/jars/gson-2.11.0.jar`) |

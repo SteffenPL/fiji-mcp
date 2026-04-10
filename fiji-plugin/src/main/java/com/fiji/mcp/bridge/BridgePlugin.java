@@ -31,11 +31,17 @@ public class BridgePlugin implements Command {
 
         // Wire up components
         EventEmitter emitter = new EventEmitter();
-        ScriptExecutor executor = new ScriptExecutor(scriptService);
+        ExecutionReporter reporter = new ExecutionReporter(
+                ij.IJ::getLog,
+                () -> {
+                    ij.ImagePlus imp = ij.WindowManager.getCurrentImage();
+                    return imp == null ? null : imp.getTitle();
+                });
+        ScriptExecutor executor = new ScriptExecutor(scriptService, reporter);
         ImageService imageService = new ImageService();
         imageService.setEventEmitter(emitter);
         RequestHandler handler = new RequestHandler(
-                executor, imageService, emitter);
+                executor, imageService, emitter, reporter);
 
         server = new BridgeWebSocketServer(port, handler);
         emitter.setEventSink(server::broadcastEvent);

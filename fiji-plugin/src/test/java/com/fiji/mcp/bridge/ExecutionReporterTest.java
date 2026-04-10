@@ -214,4 +214,23 @@ class ExecutionReporterTest {
         assertFalse(killResult.get("killed").getAsBoolean());
         assertEquals("no execution active", killResult.get("reason").getAsString());
     }
+
+    @Test
+    void runReported_secondCallWhileFirstActiveIsRejected() throws Exception {
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        JsonObject first = reporter.runReported("macro", 1, 60, () -> {
+            release.await();
+            return null;
+        });
+        String firstId = first.get("execution_id").getAsString();
+        assertEquals("running", first.get("status").getAsString());
+
+        JsonObject second = reporter.runReported("macro", null, 60, () -> "ignored");
+        assertEquals("completed", second.get("status").getAsString());
+        JsonObject err = second.getAsJsonObject("error");
+        assertEquals("ExecutionInProgress", err.get("type").getAsString());
+        assertTrue(err.get("message").getAsString().contains(firstId));
+
+        release.countDown();
+    }
 }

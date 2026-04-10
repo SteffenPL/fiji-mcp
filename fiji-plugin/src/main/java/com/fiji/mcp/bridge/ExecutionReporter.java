@@ -34,6 +34,11 @@ public class ExecutionReporter {
 
     public JsonObject runReported(String type, Integer softTimeoutSeconds,
                                   int hardTimeoutSeconds, Callable<Object> body) {
+        String existing = currentId;
+        if (existing != null && active.containsKey(existing)) {
+            return buildExecutionInProgress(existing);
+        }
+
         long startMillis = System.currentTimeMillis();
         String stdoutBefore = logSnapshot.get();
         String execId = "exec-" + counter.incrementAndGet();
@@ -173,6 +178,24 @@ public class ExecutionReporter {
         env.add("error", JsonNull.INSTANCE);
         env.addProperty("duration_ms", System.currentTimeMillis() - slot.startMillis);
         env.addProperty("execution_id", slot.id);
+        env.addProperty("active_image", activeImageTitle.get());
+        return env;
+    }
+
+    private JsonObject buildExecutionInProgress(String busyId) {
+        JsonObject env = new JsonObject();
+        env.addProperty("status", "completed");
+        env.addProperty("stdout", "");
+        env.add("value", JsonNull.INSTANCE);
+        JsonObject err = new JsonObject();
+        err.addProperty("message",
+                "Another execution is in progress: " + busyId
+                + ". Call wait_for_execution or kill_execution first.");
+        err.addProperty("type", "ExecutionInProgress");
+        err.add("line", JsonNull.INSTANCE);
+        env.add("error", err);
+        env.addProperty("duration_ms", 0);
+        env.add("execution_id", JsonNull.INSTANCE);
         env.addProperty("active_image", activeImageTitle.get());
         return env;
     }

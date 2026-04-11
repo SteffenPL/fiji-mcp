@@ -55,3 +55,15 @@ Conventions for this repo:
 - **Priority 0** is reserved for bugs that silently break core workflows (e.g. an observability gap that hides other bugs, or a regression that makes a canonical ImageJ command return wrong answers).
 - **Link vs dep**: use `tk dep` only when one ticket literally cannot start until another is done (e.g. eval harness depends on headless mode). Use `tk link` for "these two fixes are related / would have caught each other" — the common case for observability bugs.
 - When running `tk create` from tool calls, always capture the returned ID so follow-up `tk close` / `tk dep` / `tk link` calls can use it.
+
+## Structural code search with ast-grep
+
+Use `ast-grep` for queries that are about code *shape* rather than text: bug-family sweeps after finding one instance, refactoring checks, finding all members of a structural family (listener callbacks, decorated handlers, catch blocks).
+
+```
+ast-grep --lang java --pattern 'try { $$$ } catch (Throwable $V) { $$$BODY }' fiji-plugin/src/main/java
+ast-grep --lang python --pattern '@mcp.tool
+async def $FN($$$ARGS) -> $RET: $$$BODY' src/fiji_mcp/
+```
+
+`$VAR` matches one node, `$$$VARS` matches a sequence.

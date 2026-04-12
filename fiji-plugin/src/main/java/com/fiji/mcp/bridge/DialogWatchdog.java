@@ -43,7 +43,7 @@ public class DialogWatchdog {
     }
 
     /** Snapshot pre-existing dialog keys and start the poll loop. */
-    public void start() {
+    public synchronized void start() {
         snapshotKeys.clear();
         for (DialogProbe p : probeSource.get()) {
             snapshotKeys.add(p.key());

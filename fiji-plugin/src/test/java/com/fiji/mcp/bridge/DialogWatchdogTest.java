@@ -35,7 +35,7 @@ class DialogWatchdogTest {
     @Test
     void newModalDialogIsDisposedAfterStart() throws Exception {
         List<DialogProbe> probes = new ArrayList<>();
-        DialogWatchdog wd = new DialogWatchdog(() -> probes, scheduler, 50, 20);
+        DialogWatchdog wd = new DialogWatchdog(() -> new ArrayList<>(probes), scheduler, 50, 20);
         wd.start();
         // After snapshot, add a new modal-and-visible probe.
         RecordingDialogProbe probe = new RecordingDialogProbe("oops", "Body text", true);
@@ -56,7 +56,7 @@ class DialogWatchdogTest {
         RecordingDialogProbe preExisting = new RecordingDialogProbe("user-dialog", "", true);
         List<DialogProbe> probes = new ArrayList<>();
         probes.add(preExisting);
-        DialogWatchdog wd = new DialogWatchdog(() -> probes, scheduler, 50, 20);
+        DialogWatchdog wd = new DialogWatchdog(() -> new ArrayList<>(probes), scheduler, 50, 20);
         wd.start();   // snapshot includes preExisting
 
         // Give the poll loop time to run multiple iterations.
@@ -70,7 +70,7 @@ class DialogWatchdogTest {
     @Test
     void nonModalOrInvisibleDialogIsLeftAlone() throws Exception {
         List<DialogProbe> probes = new ArrayList<>();
-        DialogWatchdog wd = new DialogWatchdog(() -> probes, scheduler, 50, 20);
+        DialogWatchdog wd = new DialogWatchdog(() -> new ArrayList<>(probes), scheduler, 50, 20);
         wd.start();
 
         RecordingDialogProbe nonModal = new RecordingDialogProbe("not-modal", "", false);

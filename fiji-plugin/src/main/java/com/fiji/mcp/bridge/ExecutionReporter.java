@@ -87,14 +87,16 @@ public class ExecutionReporter {
             }
         };
 
+        DialogWatchdog watchdog = watchdogFactory != null ? watchdogFactory.get() : null;
         Future<Object> future = worker.submit(wrapped);
         Slot slot = new Slot(execId, type, future, startMillis, stdoutBefore,
-                             hardTimeoutSeconds, cancelHook, capturedStderr, null);
+                             hardTimeoutSeconds, cancelHook, capturedStderr, watchdog);
         slot.hardCancel = scheduler.schedule(
                 () -> internalCancel(slot, CancelReason.HARD_TIMEOUT),
                 hardTimeoutSeconds, TimeUnit.SECONDS);
         active.put(execId, slot);
         currentId = execId;
+        if (watchdog != null) watchdog.start();
 
         return awaitOrRunning(slot, softTimeoutSeconds);
     }
@@ -152,7 +154,8 @@ public class ExecutionReporter {
                 value = slot.future.get(softTimeoutSeconds, TimeUnit.SECONDS);
             }
             reap(slot);
-            return buildCompleted(slot, value, null);
+            Throwable promoted = maybePromoteToDialogDismissed(slot, null);
+            return buildCompleted(slot, value, promoted);
         } catch (TimeoutException e) {
             return buildRunning(slot);
         } catch (CancellationException e) {
@@ -186,6 +189,9 @@ public class ExecutionReporter {
     private void reap(Slot slot) {
         if (slot.hardCancel != null) {
             slot.hardCancel.cancel(false);
+        }
+        if (slot.watchdog != null) {
+            slot.watchdog.stop();
         }
         active.remove(slot.id);
         if (slot.id.equals(currentId)) {
@@ -266,6 +272,14 @@ public class ExecutionReporter {
         return env;
     }
 
+    private Throwable maybePromoteToDialogDismissed(Slot slot, Throwable existing) {
+        if (existing != null) return existing;
+        if (slot.watchdog == null) return null;
+        List<DismissedDialog> dismissed = slot.watchdog.dismissed();
+        if (dismissed.isEmpty()) return null;
+        return new DialogDismissedException(dismissed);
+    }
+
     private void addDismissedDialogs(JsonObject env, Slot slot) {
         com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
         if (slot != null && slot.watchdog != null) {
@@ -314,6 +328,7 @@ public class ExecutionReporter {
     private String classifyType(Throwable t, String typeHint) {
         if (t instanceof KilledException) return "Killed";
         if (t instanceof HardTimeoutException) return "TimeoutError";
+        if (t instanceof DialogDismissedException) return "DialogDismissed";
         return switch (typeHint) {
             case "macro"   -> "MacroError";
             case "script"  -> "ScriptError";

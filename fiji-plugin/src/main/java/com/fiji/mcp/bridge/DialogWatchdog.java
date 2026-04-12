@@ -22,6 +22,8 @@ import java.util.function.Supplier;
  */
 public class DialogWatchdog {
 
+    private static final int MAX_CONSECUTIVE_POLL_FAILURES = 5;
+
     private final Supplier<List<DialogProbe>> probeSource;
     private final ScheduledExecutorService scheduler;
     private final long pollIntervalMs;
@@ -31,6 +33,7 @@ public class DialogWatchdog {
     private final List<DismissedDialog> dismissed = new ArrayList<>();
     private volatile ScheduledFuture<?> task;
     private volatile long startMillis;
+    private int consecutivePollFailures;
 
     public DialogWatchdog(Supplier<List<DialogProbe>> probeSource,
                           ScheduledExecutorService scheduler,
@@ -45,8 +48,15 @@ public class DialogWatchdog {
     /** Snapshot pre-existing dialog keys and start the poll loop. */
     public synchronized void start() {
         snapshotKeys.clear();
-        for (DialogProbe p : probeSource.get()) {
-            snapshotKeys.add(p.key());
+        consecutivePollFailures = 0;
+        try {
+            for (DialogProbe p : probeSource.get()) {
+                snapshotKeys.add(p.key());
+            }
+        } catch (Throwable t) {
+            System.err.println("[fiji-mcp] watchdog snapshot threw: " + t);
+            // Empty snapshot — defensive. The poll loop will handle further
+            // failures with its own counter.
         }
         startMillis = System.currentTimeMillis();
         task = scheduler.scheduleAtFixedRate(
@@ -68,16 +78,32 @@ public class DialogWatchdog {
     }
 
     private synchronized void poll() {
-        for (DialogProbe probe : probeSource.get()) {
-            if (dismissed.size() >= maxDismissedCap) {
-                return;
+        try {
+            List<DialogProbe> current = probeSource.get();
+            for (DialogProbe probe : current) {
+                if (dismissed.size() >= maxDismissedCap) {
+                    return;
+                }
+                if (probe.isModalAndVisible() && !snapshotKeys.contains(probe.key())) {
+                    String title = probe.title();
+                    String text = probe.text();
+                    try {
+                        probe.dispose();
+                        dismissed.add(new DismissedDialog(
+                                title, text, System.currentTimeMillis() - startMillis));
+                    } catch (Throwable t) {
+                        System.err.println("[fiji-mcp] watchdog dispose failed: " + t);
+                        // Do not record — caller did not get confirmation.
+                    }
+                }
             }
-            if (probe.isModalAndVisible() && !snapshotKeys.contains(probe.key())) {
-                String title = probe.title();
-                String text = probe.text();
-                probe.dispose();
-                dismissed.add(new DismissedDialog(
-                        title, text, System.currentTimeMillis() - startMillis));
+            consecutivePollFailures = 0;
+        } catch (Throwable t) {
+            consecutivePollFailures++;
+            System.err.println("[fiji-mcp] watchdog poll threw: " + t);
+            if (consecutivePollFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+                System.err.println("[fiji-mcp] watchdog disabled for this execution");
+                stop();
             }
         }
     }

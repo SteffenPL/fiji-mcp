@@ -159,6 +159,54 @@ class DialogWatchdogTest {
         assertEquals(20, undisposed);
     }
 
+    @Test
+    void disposeExceptionIsCaughtAndProbeNotRecorded() throws Exception {
+        List<DialogProbe> probes = new ArrayList<>();
+        DialogWatchdog wd = new DialogWatchdog(
+                () -> new ArrayList<>(probes), scheduler, 50, 20);
+        wd.start();
+
+        DialogProbe throwing = new DialogProbe() {
+            @Override public Object key() { return new Object(); }
+            @Override public String title() { return "throws"; }
+            @Override public String text() { return ""; }
+            @Override public boolean isModalAndVisible() { return true; }
+            @Override public void dispose() {
+                throw new RuntimeException("dispose-failed");
+            }
+        };
+        probes.add(throwing);
+
+        Thread.sleep(300);
+        wd.stop();
+
+        // Probe was attempted but failed — must not appear in dismissed[].
+        assertEquals(0, wd.dismissed().size(),
+                "failed dispose must not be recorded as success");
+    }
+
+    @Test
+    void probeSourceExceptionsAreCaughtAndCounted() throws Exception {
+        AtomicInteger callCount = new AtomicInteger();
+        Supplier<List<DialogProbe>> throwingSource = () -> {
+            callCount.incrementAndGet();
+            throw new RuntimeException("source-broken");
+        };
+
+        DialogWatchdog wd = new DialogWatchdog(throwingSource, scheduler, 30, 20);
+        wd.start();
+
+        // Wait long enough for >5 poll cycles.
+        Thread.sleep(400);
+        wd.stop();
+
+        // After 5 consecutive failures the watchdog should stop polling itself.
+        // Allow for the start() probe-source call too.
+        int observed = callCount.get();
+        assertTrue(observed >= 5 && observed <= 7,
+                "expected ~5-6 calls before watchdog disabled itself, got: " + observed);
+    }
+
     // ── helpers ────────────────────────────────────────────────────────
 
     private static void waitForDispose(RecordingDialogProbe probe, long timeoutMs) throws InterruptedException {

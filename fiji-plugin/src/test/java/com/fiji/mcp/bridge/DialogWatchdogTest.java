@@ -207,6 +207,25 @@ class DialogWatchdogTest {
                 "expected ~5-6 calls before watchdog disabled itself, got: " + observed);
     }
 
+    @Test
+    void stopIsIdempotent() {
+        DialogWatchdog wd = new DialogWatchdog(
+                () -> List.of(), scheduler, 50, 20);
+        wd.start();
+        wd.stop();
+        wd.stop();   // must not throw
+        wd.stop();
+    }
+
+    @Test
+    void dismissedReturnsEmptyListIfNeverStarted() {
+        DialogWatchdog wd = new DialogWatchdog(
+                () -> List.of(), scheduler, 50, 20);
+        List<DismissedDialog> result = wd.dismissed();
+        assertNotNull(result);
+        assertEquals(0, result.size());
+    }
+
     // ── helpers ────────────────────────────────────────────────────────
 
     private static void waitForDispose(RecordingDialogProbe probe, long timeoutMs) throws InterruptedException {

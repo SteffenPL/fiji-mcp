@@ -83,6 +83,38 @@ class DialogWatchdogTest {
         assertEquals(0, wd.dismissed().size());
     }
 
+    @Test
+    void consecutiveStartCallsResetSnapshot() throws Exception {
+        List<DialogProbe> probes = new ArrayList<>();
+        RecordingDialogProbe d1 = new RecordingDialogProbe("first-cycle", "", true);
+        probes.add(d1);
+
+        DialogWatchdog wd = new DialogWatchdog(
+                () -> new ArrayList<>(probes), scheduler, 50, 20);
+
+        // First execution: d1 is in the snapshot, so it survives.
+        wd.start();
+        Thread.sleep(200);
+        wd.stop();
+        assertFalse(d1.disposed, "d1 was pre-existing in cycle 1");
+
+        // Now d1 is no longer in the probe list (e.g. user dismissed it manually).
+        // d2 appears as part of cycle 2's snapshot. d3 is the new offender.
+        probes.clear();
+        RecordingDialogProbe d2 = new RecordingDialogProbe("cycle2-pre", "", true);
+        probes.add(d2);
+
+        wd.start();   // snapshot now contains only d2
+        RecordingDialogProbe d3 = new RecordingDialogProbe("cycle2-new", "", true);
+        probes.add(d3);
+
+        waitForDispose(d3, 1000);
+        wd.stop();
+
+        assertTrue(d3.disposed, "d3 should be dismissed in cycle 2");
+        assertFalse(d2.disposed, "d2 was in cycle 2's snapshot");
+    }
+
     // ── helpers ────────────────────────────────────────────────────────
 
     private static void waitForDispose(RecordingDialogProbe probe, long timeoutMs) throws InterruptedException {

@@ -21,10 +21,10 @@ Design spec: `docs/superpowers/specs/2026-04-09-fiji-mcp-design.md`
 
 ## Java builds
 
-Fiji is installed locally in `Fiji/` (gitignored). The build needs the bundled Zulu JDK 21:
+Fiji is installed locally in `Fiji/` (gitignored) and ships with a bundled Zulu JDK 21 at `Fiji/java/macos-arm64/zulu21.42.19-ca-jdk21.0.7-macosx_aarch64/zulu-21.jdk/Contents/Home`. `JAVA_HOME` points there automatically in Claude Code sessions via `.claude/settings.local.json`.
 
 ```
-cd fiji-plugin && JAVA_HOME="../Fiji/java/macos-arm64/zulu21.42.19-ca-jdk21.0.7-macosx_aarch64/zulu-21.jdk/Contents/Home" mvn package -q
+cd fiji-plugin && mvn package -q
 cp target/fiji-mcp-bridge-0.1.0.jar ../Fiji/plugins/
 ```
 

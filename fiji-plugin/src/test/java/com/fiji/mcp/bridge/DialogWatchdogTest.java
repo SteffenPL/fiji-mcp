@@ -115,6 +115,50 @@ class DialogWatchdogTest {
         assertFalse(d2.disposed, "d2 was in cycle 2's snapshot");
     }
 
+    @Test
+    void multipleDialogsAreAllDisposedInOnePoll() throws Exception {
+        List<DialogProbe> probes = new ArrayList<>();
+        DialogWatchdog wd = new DialogWatchdog(
+                () -> new ArrayList<>(probes), scheduler, 50, 20);
+        wd.start();
+
+        RecordingDialogProbe a = new RecordingDialogProbe("a", "", true);
+        RecordingDialogProbe b = new RecordingDialogProbe("b", "", true);
+        RecordingDialogProbe c = new RecordingDialogProbe("c", "", true);
+        probes.add(a);
+        probes.add(b);
+        probes.add(c);
+
+        Thread.sleep(300);
+        wd.stop();
+
+        assertTrue(a.disposed && b.disposed && c.disposed,
+                "expected all three new probes disposed");
+        assertEquals(3, wd.dismissed().size());
+    }
+
+    @Test
+    void cappedAtMaxDismissedCap() throws Exception {
+        List<DialogProbe> probes = new ArrayList<>();
+        DialogWatchdog wd = new DialogWatchdog(
+                () -> new ArrayList<>(probes), scheduler, 50, 5);
+        wd.start();
+
+        for (int i = 0; i < 25; i++) {
+            probes.add(new RecordingDialogProbe("dlg-" + i, "", true));
+        }
+
+        Thread.sleep(500);
+        wd.stop();
+
+        assertEquals(5, wd.dismissed().size(),
+                "watchdog must stop dismissing once the cap is reached");
+        // Probes beyond the cap remain undisposed.
+        long undisposed = probes.stream().filter(p ->
+                !((RecordingDialogProbe) p).disposed).count();
+        assertEquals(20, undisposed);
+    }
+
     // ── helpers ────────────────────────────────────────────────────────
 
     private static void waitForDispose(RecordingDialogProbe probe, long timeoutMs) throws InterruptedException {

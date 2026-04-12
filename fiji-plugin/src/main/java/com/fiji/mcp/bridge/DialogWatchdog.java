@@ -69,6 +69,9 @@ public class DialogWatchdog {
 
     private synchronized void poll() {
         for (DialogProbe probe : probeSource.get()) {
+            if (dismissed.size() >= maxDismissedCap) {
+                return;
+            }
             if (probe.isModalAndVisible() && !snapshotKeys.contains(probe.key())) {
                 String title = probe.title();
                 String text = probe.text();

@@ -4,6 +4,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -14,6 +15,9 @@ public class ExecutionReporter {
     private final Supplier<String> logSnapshot;
     private final Supplier<String> activeImageTitle;
     private final StderrTeeStream stderrTee;
+    private final Supplier<DialogWatchdog> watchdogFactory;
+    private final Runnable lockAcquire;
+    private final Runnable lockRelease;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "fiji-mcp-worker");
         t.setDaemon(true);
@@ -29,16 +33,25 @@ public class ExecutionReporter {
     private volatile String currentId;
 
     public ExecutionReporter(Supplier<String> logSnapshot,
-                             Supplier<String> activeImageTitle) {
-        this(logSnapshot, activeImageTitle, null);
+                             Supplier<String> activeImageTitle,
+                             StderrTeeStream stderrTee) {
+        // Legacy/test shim — no watchdog, no lock.
+        this(logSnapshot, activeImageTitle, stderrTee,
+             null, () -> {}, () -> {});
     }
 
     public ExecutionReporter(Supplier<String> logSnapshot,
                              Supplier<String> activeImageTitle,
-                             StderrTeeStream stderrTee) {
+                             StderrTeeStream stderrTee,
+                             Supplier<DialogWatchdog> watchdogFactory,
+                             Runnable lockAcquire,
+                             Runnable lockRelease) {
         this.logSnapshot = logSnapshot;
         this.activeImageTitle = activeImageTitle;
         this.stderrTee = stderrTee;
+        this.watchdogFactory = watchdogFactory;
+        this.lockAcquire = lockAcquire;
+        this.lockRelease = lockRelease;
     }
 
     public JsonObject runReported(String type, Integer softTimeoutSeconds,
@@ -74,14 +87,24 @@ public class ExecutionReporter {
             }
         };
 
+        // Acquire lock so the user sees the "busy" signal as soon as possible.
+        // Failure is logged but never aborts the execution.
+        try {
+            lockAcquire.run();
+        } catch (Throwable t) {
+            System.err.println("[fiji-mcp] lock acquire failed: " + t);
+        }
+
+        DialogWatchdog watchdog = watchdogFactory != null ? watchdogFactory.get() : null;
         Future<Object> future = worker.submit(wrapped);
         Slot slot = new Slot(execId, type, future, startMillis, stdoutBefore,
-                             hardTimeoutSeconds, cancelHook, capturedStderr);
+                             hardTimeoutSeconds, cancelHook, capturedStderr, watchdog);
         slot.hardCancel = scheduler.schedule(
                 () -> internalCancel(slot, CancelReason.HARD_TIMEOUT),
                 hardTimeoutSeconds, TimeUnit.SECONDS);
         active.put(execId, slot);
         currentId = execId;
+        if (watchdog != null) watchdog.start();
 
         return awaitOrRunning(slot, softTimeoutSeconds);
     }
@@ -139,7 +162,8 @@ public class ExecutionReporter {
                 value = slot.future.get(softTimeoutSeconds, TimeUnit.SECONDS);
             }
             reap(slot);
-            return buildCompleted(slot, value, null);
+            Throwable promoted = maybePromoteToDialogDismissed(slot, null);
+            return buildCompleted(slot, value, promoted);
         } catch (TimeoutException e) {
             return buildRunning(slot);
         } catch (CancellationException e) {
@@ -174,6 +198,14 @@ public class ExecutionReporter {
         if (slot.hardCancel != null) {
             slot.hardCancel.cancel(false);
         }
+        if (slot.watchdog != null) {
+            slot.watchdog.stop();
+        }
+        try {
+            lockRelease.run();
+        } catch (Throwable t) {
+            System.err.println("[fiji-mcp] lock release failed: " + t);
+        }
         active.remove(slot.id);
         if (slot.id.equals(currentId)) {
             currentId = null;
@@ -194,6 +226,7 @@ public class ExecutionReporter {
         env.addProperty("duration_ms", System.currentTimeMillis() - slot.startMillis);
         env.add("execution_id", JsonNull.INSTANCE);
         env.addProperty("active_image", activeImageTitle.get());
+        addDismissedDialogs(env, slot);
         return env;
     }
 
@@ -210,6 +243,7 @@ public class ExecutionReporter {
         env.addProperty("duration_ms", System.currentTimeMillis() - slot.startMillis);
         env.addProperty("execution_id", slot.id);
         env.addProperty("active_image", activeImageTitle.get());
+        addDismissedDialogs(env, slot);
         return env;
     }
 
@@ -229,6 +263,7 @@ public class ExecutionReporter {
         env.addProperty("duration_ms", 0);
         env.add("execution_id", JsonNull.INSTANCE);
         env.addProperty("active_image", activeImageTitle.get());
+        addEmptyDismissedDialogs(env);
         return env;
     }
 
@@ -246,7 +281,34 @@ public class ExecutionReporter {
         env.addProperty("duration_ms", 0);
         env.add("execution_id", JsonNull.INSTANCE);
         env.addProperty("active_image", activeImageTitle.get());
+        addEmptyDismissedDialogs(env);
         return env;
+    }
+
+    private Throwable maybePromoteToDialogDismissed(Slot slot, Throwable existing) {
+        if (existing != null) return existing;
+        if (slot.watchdog == null) return null;
+        List<DismissedDialog> dismissed = slot.watchdog.dismissed();
+        if (dismissed.isEmpty()) return null;
+        return new DialogDismissedException(dismissed);
+    }
+
+    private void addDismissedDialogs(JsonObject env, Slot slot) {
+        com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
+        if (slot != null && slot.watchdog != null) {
+            for (DismissedDialog d : slot.watchdog.dismissed()) {
+                JsonObject entry = new JsonObject();
+                entry.addProperty("title", d.title());
+                entry.addProperty("text", d.text());
+                entry.addProperty("when_ms", d.whenMs());
+                arr.add(entry);
+            }
+        }
+        env.add("dismissed_dialogs", arr);
+    }
+
+    private void addEmptyDismissedDialogs(JsonObject env) {
+        env.add("dismissed_dialogs", new com.google.gson.JsonArray());
     }
 
     private static final java.util.regex.Pattern IJ_LINE_PATTERN =
@@ -279,6 +341,7 @@ public class ExecutionReporter {
     private String classifyType(Throwable t, String typeHint) {
         if (t instanceof KilledException) return "Killed";
         if (t instanceof HardTimeoutException) return "TimeoutError";
+        if (t instanceof DialogDismissedException) return "DialogDismissed";
         return switch (typeHint) {
             case "macro"   -> "MacroError";
             case "script"  -> "ScriptError";
@@ -307,12 +370,14 @@ public class ExecutionReporter {
         final int hardTimeoutSeconds;
         final Runnable cancelHook;
         final AtomicReference<String> capturedStderr;
+        final DialogWatchdog watchdog;             // NEW
         volatile ScheduledFuture<?> hardCancel;
         volatile CancelReason cancelReason;
 
         Slot(String id, String type, Future<Object> future,
              long startMillis, String stdoutBefore, int hardTimeoutSeconds,
-             Runnable cancelHook, AtomicReference<String> capturedStderr) {
+             Runnable cancelHook, AtomicReference<String> capturedStderr,
+             DialogWatchdog watchdog) {                                       // NEW
             this.id = id;
             this.type = type;
             this.future = future;
@@ -321,6 +386,7 @@ public class ExecutionReporter {
             this.hardTimeoutSeconds = hardTimeoutSeconds;
             this.cancelHook = cancelHook;
             this.capturedStderr = capturedStderr;
+            this.watchdog = watchdog;             // NEW
         }
     }
 

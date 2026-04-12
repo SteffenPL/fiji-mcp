@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -327,5 +329,154 @@ class ExecutionReporterTest {
         assertTrue(err.get("message").getAsString().contains(firstId));
 
         release.countDown();
+    }
+
+    @Test
+    void runReported_envelopeAlwaysIncludesDismissedDialogsField() {
+        JsonObject result = reporter.runReported("macro", null, 60, () -> "ok");
+        assertTrue(result.has("dismissed_dialogs"),
+                "every envelope must carry dismissed_dialogs[]");
+        assertTrue(result.get("dismissed_dialogs").isJsonArray());
+        assertEquals(0, result.getAsJsonArray("dismissed_dialogs").size());
+    }
+
+    @Test
+    void runReported_promotesDialogDismissedErrorWhenScriptHadNoNaturalError() {
+        // Use a fake watchdog factory that pre-records one dismissal.
+        DialogWatchdog fake = new FakeWatchdog(List.of(
+                new DismissedDialog("No image", "There are no images open.", 100)));
+        ExecutionReporter custom = new ExecutionReporter(
+                () -> "", () -> "test-image.tif", stderrTee,
+                () -> fake, () -> {}, () -> {});
+        try {
+            JsonObject result = custom.runReported("macro", null, 60, () -> "ok");
+
+            assertTrue(result.has("error") && !result.get("error").isJsonNull());
+            JsonObject err = result.getAsJsonObject("error");
+            assertEquals("DialogDismissed", err.get("type").getAsString());
+            assertTrue(err.get("message").getAsString().contains("No image"));
+
+            assertEquals(1, result.getAsJsonArray("dismissed_dialogs").size());
+        } finally {
+            custom.shutdown();
+        }
+    }
+
+    @Test
+    void runReported_preservesScriptErrorWhenDialogAlsoDismissed() {
+        DialogWatchdog fake = new FakeWatchdog(List.of(
+                new DismissedDialog("oops", "", 50)));
+        ExecutionReporter custom = new ExecutionReporter(
+                () -> "", () -> "test-image.tif", stderrTee,
+                () -> fake, () -> {}, () -> {});
+        try {
+            JsonObject result = custom.runReported("macro", null, 60, () -> {
+                throw new RuntimeException("real script error");
+            });
+
+            JsonObject err = result.getAsJsonObject("error");
+            // Real script error preserved, not overwritten by DialogDismissed.
+            assertEquals("MacroError", err.get("type").getAsString());
+            assertEquals("real script error", err.get("message").getAsString());
+            // dismissed_dialogs still surfaced alongside.
+            assertEquals(1, result.getAsJsonArray("dismissed_dialogs").size());
+        } finally {
+            custom.shutdown();
+        }
+    }
+
+    @Test
+    void runReported_callsAcquireBeforeBodyAndReleaseAfter() {
+        List<String> events = new ArrayList<>();
+        Runnable acq = () -> events.add("acquire");
+        Runnable rel = () -> events.add("release");
+        ExecutionReporter custom = new ExecutionReporter(
+                () -> "", () -> "test-image.tif", stderrTee, null, acq, rel);
+        try {
+            custom.runReported("macro", null, 60, () -> {
+                events.add("body");
+                return null;
+            });
+            assertEquals(List.of("acquire", "body", "release"), events);
+        } finally {
+            custom.shutdown();
+        }
+    }
+
+    @Test
+    void runReported_releasesLockEvenWhenBodyThrows() {
+        AtomicReference<String> released = new AtomicReference<>();
+        ExecutionReporter custom = new ExecutionReporter(
+                () -> "", () -> "test-image.tif", stderrTee,
+                null, () -> {}, () -> released.set("released"));
+        try {
+            custom.runReported("macro", null, 60, () -> {
+                throw new RuntimeException("boom");
+            });
+            assertEquals("released", released.get());
+        } finally {
+            custom.shutdown();
+        }
+    }
+
+    @Test
+    void runReported_releasesLockEvenOnHardTimeout() {
+        AtomicReference<String> released = new AtomicReference<>();
+        ExecutionReporter custom = new ExecutionReporter(
+                () -> "", () -> "test-image.tif", stderrTee,
+                null, () -> {}, () -> released.set("released"));
+        try {
+            JsonObject result = custom.runReported("macro", null, 1, () -> {
+                Thread.sleep(10_000);
+                return null;
+            });
+            assertEquals("TimeoutError",
+                    result.getAsJsonObject("error").get("type").getAsString());
+            assertEquals("released", released.get());
+        } finally {
+            custom.shutdown();
+        }
+    }
+
+    @Test
+    void runReported_releasesLockEvenWhenAcquireThrew() {
+        AtomicReference<String> released = new AtomicReference<>();
+        Runnable badAcquire = () -> { throw new RuntimeException("acquire boom"); };
+        Runnable goodRelease = () -> released.set("released");
+        ExecutionReporter custom = new ExecutionReporter(
+                () -> "", () -> "test-image.tif", stderrTee,
+                null, badAcquire, goodRelease);
+        try {
+            JsonObject result = custom.runReported("macro", null, 60, () -> "ok");
+            assertEquals("completed", result.get("status").getAsString());
+            assertEquals("released", released.get());
+        } finally {
+            custom.shutdown();
+        }
+    }
+
+    /**
+     * Test fake — bypasses scheduling entirely. Pre-populated with the
+     * dismissals you want the test to see.
+     */
+    private static class FakeWatchdog extends DialogWatchdog {
+        private final List<DismissedDialog> preRecorded;
+
+        FakeWatchdog(List<DismissedDialog> preRecorded) {
+            super(java.util.Collections::emptyList,
+                  java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                      Thread t = new Thread(r, "fake-wd");
+                      t.setDaemon(true);
+                      return t;
+                  }),
+                  60_000, 20);
+            this.preRecorded = preRecorded;
+        }
+
+        @Override public synchronized void start() { /* no-op — we don't actually poll */ }
+        @Override public void stop() { /* no-op */ }
+        @Override public synchronized List<DismissedDialog> dismissed() {
+            return new java.util.ArrayList<>(preRecorded);
+        }
     }
 }

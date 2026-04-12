@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -379,6 +380,76 @@ class ExecutionReporterTest {
             assertEquals("real script error", err.get("message").getAsString());
             // dismissed_dialogs still surfaced alongside.
             assertEquals(1, result.getAsJsonArray("dismissed_dialogs").size());
+        } finally {
+            custom.shutdown();
+        }
+    }
+
+    @Test
+    void runReported_callsAcquireBeforeBodyAndReleaseAfter() {
+        List<String> events = new ArrayList<>();
+        Runnable acq = () -> events.add("acquire");
+        Runnable rel = () -> events.add("release");
+        ExecutionReporter custom = new ExecutionReporter(
+                () -> "", () -> "test-image.tif", stderrTee, null, acq, rel);
+        try {
+            custom.runReported("macro", null, 60, () -> {
+                events.add("body");
+                return null;
+            });
+            assertEquals(List.of("acquire", "body", "release"), events);
+        } finally {
+            custom.shutdown();
+        }
+    }
+
+    @Test
+    void runReported_releasesLockEvenWhenBodyThrows() {
+        AtomicReference<String> released = new AtomicReference<>();
+        ExecutionReporter custom = new ExecutionReporter(
+                () -> "", () -> "test-image.tif", stderrTee,
+                null, () -> {}, () -> released.set("released"));
+        try {
+            custom.runReported("macro", null, 60, () -> {
+                throw new RuntimeException("boom");
+            });
+            assertEquals("released", released.get());
+        } finally {
+            custom.shutdown();
+        }
+    }
+
+    @Test
+    void runReported_releasesLockEvenOnHardTimeout() {
+        AtomicReference<String> released = new AtomicReference<>();
+        ExecutionReporter custom = new ExecutionReporter(
+                () -> "", () -> "test-image.tif", stderrTee,
+                null, () -> {}, () -> released.set("released"));
+        try {
+            JsonObject result = custom.runReported("macro", null, 1, () -> {
+                Thread.sleep(10_000);
+                return null;
+            });
+            assertEquals("TimeoutError",
+                    result.getAsJsonObject("error").get("type").getAsString());
+            assertEquals("released", released.get());
+        } finally {
+            custom.shutdown();
+        }
+    }
+
+    @Test
+    void runReported_releasesLockEvenWhenAcquireThrew() {
+        AtomicReference<String> released = new AtomicReference<>();
+        Runnable badAcquire = () -> { throw new RuntimeException("acquire boom"); };
+        Runnable goodRelease = () -> released.set("released");
+        ExecutionReporter custom = new ExecutionReporter(
+                () -> "", () -> "test-image.tif", stderrTee,
+                null, badAcquire, goodRelease);
+        try {
+            JsonObject result = custom.runReported("macro", null, 60, () -> "ok");
+            assertEquals("completed", result.get("status").getAsString());
+            assertEquals("released", released.get());
         } finally {
             custom.shutdown();
         }

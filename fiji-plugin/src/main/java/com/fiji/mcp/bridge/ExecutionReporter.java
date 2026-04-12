@@ -87,6 +87,14 @@ public class ExecutionReporter {
             }
         };
 
+        // Acquire lock so the user sees the "busy" signal as soon as possible.
+        // Failure is logged but never aborts the execution.
+        try {
+            lockAcquire.run();
+        } catch (Throwable t) {
+            System.err.println("[fiji-mcp] lock acquire failed: " + t);
+        }
+
         DialogWatchdog watchdog = watchdogFactory != null ? watchdogFactory.get() : null;
         Future<Object> future = worker.submit(wrapped);
         Slot slot = new Slot(execId, type, future, startMillis, stdoutBefore,
@@ -192,6 +200,11 @@ public class ExecutionReporter {
         }
         if (slot.watchdog != null) {
             slot.watchdog.stop();
+        }
+        try {
+            lockRelease.run();
+        } catch (Throwable t) {
+            System.err.println("[fiji-mcp] lock release failed: " + t);
         }
         active.remove(slot.id);
         if (slot.id.equals(currentId)) {

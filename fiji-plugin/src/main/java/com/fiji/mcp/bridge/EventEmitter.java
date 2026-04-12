@@ -165,6 +165,10 @@ public class EventEmitter implements ij.ImageListener, ij.gui.RoiListener {
     @Override
     public void roiModified(ImagePlus imp, int id) {
         if (!enabledCategories.contains("roi")) return;
+        // Skip detached ROIs entirely (e.g. transient PolygonRoi instances
+        // constructed by ParticleAnalyzer with null imp). Dereferencing imp
+        // here previously NPE'd and aborted analysis mid-pass — see fm-9cbk.
+        if (imp == null) return;
         String eventName = switch (id) {
             case ij.gui.RoiListener.CREATED   -> "roi_created";
             case ij.gui.RoiListener.MOVED     -> "roi_moved";

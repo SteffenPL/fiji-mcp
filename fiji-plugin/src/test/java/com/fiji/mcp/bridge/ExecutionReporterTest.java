@@ -5,6 +5,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -12,17 +14,27 @@ import static org.junit.jupiter.api.Assertions.*;
 class ExecutionReporterTest {
 
     private AtomicReference<String> mockLog;
+    private StderrTeeStream stderrTee;
+    private PrintStream originalErr;
     private ExecutionReporter reporter;
 
     @BeforeEach
     void setUp() {
         mockLog = new AtomicReference<>("");
-        reporter = new ExecutionReporter(() -> mockLog.get(), () -> "test-image.tif");
+        originalErr = System.err;
+        stderrTee = new StderrTeeStream(
+                new PrintStream(new ByteArrayOutputStream(), true));
+        // Worker bodies in these tests write to System.err — install the tee
+        // as the JVM's stderr so the tee's capture path actually engages.
+        System.setErr(stderrTee);
+        reporter = new ExecutionReporter(
+                () -> mockLog.get(), () -> "test-image.tif", stderrTee);
     }
 
     @AfterEach
     void tearDown() {
         reporter.shutdown();
+        System.setErr(originalErr);
     }
 
     @Test
@@ -32,10 +44,79 @@ class ExecutionReporterTest {
         assertEquals("completed", result.get("status").getAsString());
         assertEquals("the value", result.get("value").getAsString());
         assertEquals("", result.get("stdout").getAsString());
+        assertEquals("", result.get("stderr").getAsString());
         assertTrue(result.get("error").isJsonNull());
         assertTrue(result.get("execution_id").isJsonNull());
         assertTrue(result.get("duration_ms").getAsLong() >= 0);
         assertEquals("test-image.tif", result.get("active_image").getAsString());
+    }
+
+    @Test
+    void runReported_capturesStderrWrittenByWorkerBody() {
+        // fm-50jy: NPEs caught by IJ.handleException are dumped to System.err
+        // and were swallowed before this fix. Verify worker-thread stderr ends
+        // up on the envelope.
+        JsonObject result = reporter.runReported("macro", null, 60, () -> {
+            System.err.println("oops fm-50jy");
+            return "ok";
+        });
+
+        assertEquals("completed", result.get("status").getAsString());
+        assertEquals("ok", result.get("value").getAsString());
+        assertTrue(result.get("stderr").getAsString().contains("oops fm-50jy"),
+                "expected stderr in envelope, got: " + result.get("stderr"));
+    }
+
+    @Test
+    void runReported_capturesStderrWhenBodyThrows() {
+        // Even when the worker body throws, the finally block must still
+        // hand off whatever stderr it produced before the exception.
+        JsonObject result = reporter.runReported("macro", null, 60, () -> {
+            System.err.println("trace before boom");
+            throw new RuntimeException("boom");
+        });
+
+        assertEquals("trace before boom" + System.lineSeparator(),
+                result.get("stderr").getAsString());
+        assertEquals("boom",
+                result.getAsJsonObject("error").get("message").getAsString());
+    }
+
+    @Test
+    void runReported_capturesStderrFromSubThreadDuringWindow() throws Exception {
+        // Regression for the live-test miss: SciJava ScriptService runs scripts
+        // on its own thread pool, so the worker body for run_script blocks in
+        // future.get() while the script body — and any IJ.handleException trace
+        // it triggers — runs on a SciJava thread. Capture must not be keyed
+        // on the worker thread alone.
+        JsonObject result = reporter.runReported("script", null, 60, () -> {
+            Thread sub = new Thread(() -> System.err.println("from sub-thread"));
+            sub.start();
+            sub.join();
+            return "ok";
+        });
+
+        assertEquals("ok", result.get("value").getAsString());
+        assertTrue(result.get("stderr").getAsString().contains("from sub-thread"),
+                "expected sub-thread stderr to be captured, got: "
+                + result.get("stderr"));
+    }
+
+    @Test
+    void runReported_consecutiveCapturesDoNotBleedAcrossExecutions() {
+        JsonObject first = reporter.runReported("macro", null, 60, () -> {
+            System.err.println("first execution");
+            return null;
+        });
+        JsonObject second = reporter.runReported("macro", null, 60, () -> {
+            System.err.println("second execution");
+            return null;
+        });
+
+        assertTrue(first.get("stderr").getAsString().contains("first execution"));
+        assertFalse(first.get("stderr").getAsString().contains("second execution"));
+        assertTrue(second.get("stderr").getAsString().contains("second execution"));
+        assertFalse(second.get("stderr").getAsString().contains("first execution"));
     }
 
     @Test

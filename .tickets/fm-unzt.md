@@ -14,3 +14,9 @@ tags: [feedback, bridge, execution]
 
 Session 1 item 5: Find Maxima hung on a modal dialog with no diagnostic. Partially mitigated by setIgnoreErrors+Interpreter path, but non-macro dialog sources can still block.
 
+
+## Notes
+
+**2026-04-12T00:59:16Z**
+
+Fresh repro 2026-04-12 during fp-89zk live testing: run_ij_macro with code 'IJ.run("Convert to Mask")' against an empty Fiji session (no active image) blocked the worker thread for 87 seconds before returning 'Macro canceled'. The hard timeout is 600s and no soft timeout was set, so something internal cancelled it after 87s — possibly Fiji's own dialog auto-dismiss or an interrupt from another path. Either way: the worker was wedged on a modal dialog with no diagnostic, exactly the failure mode this ticket describes. The fp-89zk fix doesn't help here because nothing throws — the worker just blocks on Swing/AWT dialog input.

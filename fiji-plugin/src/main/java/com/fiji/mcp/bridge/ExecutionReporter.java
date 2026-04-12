@@ -6,12 +6,14 @@ import com.google.gson.JsonPrimitive;
 
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 public class ExecutionReporter {
 
     private final Supplier<String> logSnapshot;
     private final Supplier<String> activeImageTitle;
+    private final StderrTeeStream stderrTee;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "fiji-mcp-worker");
         t.setDaemon(true);
@@ -28,8 +30,15 @@ public class ExecutionReporter {
 
     public ExecutionReporter(Supplier<String> logSnapshot,
                              Supplier<String> activeImageTitle) {
+        this(logSnapshot, activeImageTitle, null);
+    }
+
+    public ExecutionReporter(Supplier<String> logSnapshot,
+                             Supplier<String> activeImageTitle,
+                             StderrTeeStream stderrTee) {
         this.logSnapshot = logSnapshot;
         this.activeImageTitle = activeImageTitle;
+        this.stderrTee = stderrTee;
     }
 
     public JsonObject runReported(String type, Integer softTimeoutSeconds,
@@ -48,19 +57,26 @@ public class ExecutionReporter {
         long startMillis = System.currentTimeMillis();
         String stdoutBefore = logSnapshot.get();
         String execId = "exec-" + counter.incrementAndGet();
+        // Worker stashes its captured stderr here in the finally block; the
+        // caller thread reads it when building the completed envelope. We can't
+        // safely peek at the worker's ThreadLocal from another thread, so the
+        // running envelope reports stderr="" until the worker actually finishes.
+        AtomicReference<String> capturedStderr = new AtomicReference<>("");
 
         Callable<Object> wrapped = () -> {
             SourceTracker.setMcpActive(true);
+            if (stderrTee != null) stderrTee.beginCapture();
             try {
                 return body.call();
             } finally {
                 SourceTracker.setMcpActive(false);
+                if (stderrTee != null) capturedStderr.set(stderrTee.endCapture());
             }
         };
 
         Future<Object> future = worker.submit(wrapped);
         Slot slot = new Slot(execId, type, future, startMillis, stdoutBefore,
-                             hardTimeoutSeconds, cancelHook);
+                             hardTimeoutSeconds, cancelHook, capturedStderr);
         slot.hardCancel = scheduler.schedule(
                 () -> internalCancel(slot, CancelReason.HARD_TIMEOUT),
                 hardTimeoutSeconds, TimeUnit.SECONDS);
@@ -170,6 +186,7 @@ public class ExecutionReporter {
         JsonObject env = new JsonObject();
         env.addProperty("status", "completed");
         env.addProperty("stdout", diff(slot.stdoutBefore, logSnapshot.get()));
+        env.addProperty("stderr", slot.capturedStderr.get());
         env.add("value", value == null ? JsonNull.INSTANCE
                                        : new JsonPrimitive(String.valueOf(value)));
         env.add("error", error == null ? JsonNull.INSTANCE
@@ -184,6 +201,10 @@ public class ExecutionReporter {
         JsonObject env = new JsonObject();
         env.addProperty("status", "running");
         env.addProperty("stdout", diff(slot.stdoutBefore, logSnapshot.get()));
+        // Worker is still alive — its stderr ThreadLocal is not safe to read
+        // from this thread. The completed envelope (or wait_for_execution) will
+        // surface it once the worker's finally block has run.
+        env.addProperty("stderr", "");
         env.add("value", JsonNull.INSTANCE);
         env.add("error", JsonNull.INSTANCE);
         env.addProperty("duration_ms", System.currentTimeMillis() - slot.startMillis);
@@ -196,6 +217,7 @@ public class ExecutionReporter {
         JsonObject env = new JsonObject();
         env.addProperty("status", "completed");
         env.addProperty("stdout", "");
+        env.addProperty("stderr", "");
         env.add("value", JsonNull.INSTANCE);
         JsonObject err = new JsonObject();
         err.addProperty("message",
@@ -214,6 +236,7 @@ public class ExecutionReporter {
         JsonObject env = new JsonObject();
         env.addProperty("status", "completed");
         env.addProperty("stdout", "");
+        env.addProperty("stderr", "");
         env.add("value", JsonNull.INSTANCE);
         JsonObject err = new JsonObject();
         err.addProperty("message", "No execution with id " + requestedId);
@@ -283,12 +306,13 @@ public class ExecutionReporter {
         final String stdoutBefore;
         final int hardTimeoutSeconds;
         final Runnable cancelHook;
+        final AtomicReference<String> capturedStderr;
         volatile ScheduledFuture<?> hardCancel;
         volatile CancelReason cancelReason;
 
         Slot(String id, String type, Future<Object> future,
              long startMillis, String stdoutBefore, int hardTimeoutSeconds,
-             Runnable cancelHook) {
+             Runnable cancelHook, AtomicReference<String> capturedStderr) {
             this.id = id;
             this.type = type;
             this.future = future;
@@ -296,6 +320,7 @@ public class ExecutionReporter {
             this.stdoutBefore = stdoutBefore;
             this.hardTimeoutSeconds = hardTimeoutSeconds;
             this.cancelHook = cancelHook;
+            this.capturedStderr = capturedStderr;
         }
     }
 

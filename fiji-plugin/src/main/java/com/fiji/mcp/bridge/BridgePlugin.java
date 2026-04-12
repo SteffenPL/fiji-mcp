@@ -41,15 +41,37 @@ public class BridgePlugin implements Command {
         // to envelope.stderr — see fp-89zk.
         IJ.setExceptionHandler(new BridgeExceptionHandler());
 
+        // Watchdog scheduler — single daemon thread for dialog polling.
+        java.util.concurrent.ScheduledExecutorService watchdogScheduler =
+                java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+                    Thread t = new Thread(r, "fiji-mcp-watchdog");
+                    t.setDaemon(true);
+                    return t;
+                });
+
+        // Execution lock — phase 1: construct without cancel hook.
+        ExecutionLock lock = new ExecutionLock(IJ.getInstance());
+
         // Wire up components
         EventEmitter emitter = new EventEmitter();
+        java.util.function.Supplier<DialogWatchdog> watchdogFactory =
+                () -> new DialogWatchdog(
+                        AwtDialogProbe::currentAll, watchdogScheduler, 500, 20);
+
         ExecutionReporter reporter = new ExecutionReporter(
                 ij.IJ::getLog,
                 () -> {
                     ij.ImagePlus imp = ij.WindowManager.getCurrentImage();
                     return imp == null ? null : imp.getTitle();
                 },
-                stderrTee);
+                stderrTee,
+                watchdogFactory,
+                lock::acquire,
+                lock::release);
+
+        // Phase 2: now that reporter exists, wire its kill into the lock's
+        // Cancel button.
+        lock.setCancelHook(() -> reporter.kill(null));
         ScriptExecutor executor = new ScriptExecutor(scriptService, reporter);
         ImageService imageService = new ImageService();
         imageService.setEventEmitter(emitter);

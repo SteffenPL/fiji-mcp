@@ -328,4 +328,13 @@ class ExecutionReporterTest {
 
         release.countDown();
     }
+
+    @Test
+    void runReported_envelopeAlwaysIncludesDismissedDialogsField() {
+        JsonObject result = reporter.runReported("macro", null, 60, () -> "ok");
+        assertTrue(result.has("dismissed_dialogs"),
+                "every envelope must carry dismissed_dialogs[]");
+        assertTrue(result.get("dismissed_dialogs").isJsonArray());
+        assertEquals(0, result.getAsJsonArray("dismissed_dialogs").size());
+    }
 }

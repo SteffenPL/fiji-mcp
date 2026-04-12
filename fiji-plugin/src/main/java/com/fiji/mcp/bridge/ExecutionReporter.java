@@ -4,6 +4,7 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -206,6 +207,7 @@ public class ExecutionReporter {
         env.addProperty("duration_ms", System.currentTimeMillis() - slot.startMillis);
         env.add("execution_id", JsonNull.INSTANCE);
         env.addProperty("active_image", activeImageTitle.get());
+        addDismissedDialogs(env, slot);
         return env;
     }
 
@@ -222,6 +224,7 @@ public class ExecutionReporter {
         env.addProperty("duration_ms", System.currentTimeMillis() - slot.startMillis);
         env.addProperty("execution_id", slot.id);
         env.addProperty("active_image", activeImageTitle.get());
+        addDismissedDialogs(env, slot);
         return env;
     }
 
@@ -241,6 +244,7 @@ public class ExecutionReporter {
         env.addProperty("duration_ms", 0);
         env.add("execution_id", JsonNull.INSTANCE);
         env.addProperty("active_image", activeImageTitle.get());
+        addEmptyDismissedDialogs(env);
         return env;
     }
 
@@ -258,7 +262,26 @@ public class ExecutionReporter {
         env.addProperty("duration_ms", 0);
         env.add("execution_id", JsonNull.INSTANCE);
         env.addProperty("active_image", activeImageTitle.get());
+        addEmptyDismissedDialogs(env);
         return env;
+    }
+
+    private void addDismissedDialogs(JsonObject env, Slot slot) {
+        com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
+        if (slot != null && slot.watchdog != null) {
+            for (DismissedDialog d : slot.watchdog.dismissed()) {
+                JsonObject entry = new JsonObject();
+                entry.addProperty("title", d.title());
+                entry.addProperty("text", d.text());
+                entry.addProperty("when_ms", d.whenMs());
+                arr.add(entry);
+            }
+        }
+        env.add("dismissed_dialogs", arr);
+    }
+
+    private void addEmptyDismissedDialogs(JsonObject env) {
+        env.add("dismissed_dialogs", new com.google.gson.JsonArray());
     }
 
     private static final java.util.regex.Pattern IJ_LINE_PATTERN =

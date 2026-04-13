@@ -104,6 +104,45 @@ public class ImageService {
         return result;
     }
 
+    public JsonObject getThumbnail(JsonObject params) {
+        ImagePlus imp = findImage(params);
+        if (imp == null) {
+            throw new RuntimeException("Image not found");
+        }
+
+        int maxSize = params.has("max_size")
+                ? params.get("max_size").getAsInt() : 800;
+        boolean applyLut = !params.has("apply_lut")
+                || params.get("apply_lut").getAsBoolean();
+
+        // flatten() bakes the current LUT, overlays, and ROIs into an RGB
+        ImagePlus snapshot;
+        if (applyLut) {
+            snapshot = imp.flatten();
+        } else {
+            snapshot = new ImagePlus("thumb", imp.getProcessor().duplicate());
+        }
+
+        // Scale down, preserving aspect ratio
+        int w = snapshot.getWidth(), h = snapshot.getHeight();
+        if (w > maxSize || h > maxSize) {
+            double scale = (double) maxSize / Math.max(w, h);
+            int nw = (int) (w * scale), nh = (int) (h * scale);
+            snapshot.setProcessor(
+                    snapshot.getProcessor().resize(nw, nh, true));
+        }
+
+        String path = System.getProperty("java.io.tmpdir") + File.separator
+                + "fiji_mcp_thumb_" + System.currentTimeMillis() + ".png";
+        new FileSaver(snapshot).saveAsPng(path);
+
+        JsonObject result = new JsonObject();
+        result.addProperty("path", path);
+        result.addProperty("width", snapshot.getProcessor().getWidth());
+        result.addProperty("height", snapshot.getProcessor().getHeight());
+        return result;
+    }
+
     public JsonObject getResultsTable(JsonObject params) {
         ResultsTable rt = ResultsTable.getResultsTable();
         if (rt == null || rt.size() == 0) {

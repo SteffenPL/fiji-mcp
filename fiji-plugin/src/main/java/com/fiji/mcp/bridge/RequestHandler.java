@@ -30,6 +30,7 @@ public class RequestHandler {
             case "list_images"           -> imageService.listImages();
             case "get_image_info"        -> imageService.getImageInfo(params);
             case "save_image"            -> imageService.saveImage(params);
+            case "get_thumbnail"         -> imageService.getThumbnail(params);
             case "get_results_table"     -> imageService.getResultsTable(params);
             case "get_log"               -> imageService.getLog(params);
             case "status"                -> buildStatus();

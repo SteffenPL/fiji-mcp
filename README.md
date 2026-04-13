@@ -70,7 +70,13 @@ uv sync
 
 #### Claude Code
 
-Add a `.mcp.json` file to your project root (or copy from `examples/test-env/`):
+From the fiji-mcp directory, run:
+
+```bash
+claude mcp add fiji-mcp -- uv run --directory /absolute/path/to/fiji-mcp fiji-mcp
+```
+
+Or add a `.mcp.json` file to your project root:
 
 ```json
 {
@@ -83,6 +89,14 @@ Add a `.mcp.json` file to your project root (or copy from `examples/test-env/`):
   }
 }
 ```
+
+#### Codex
+
+```bash
+codex mcp add fiji-mcp --env FIJI_MCP_PORT=8765 -- uv run --directory /absolute/path/to/fiji-mcp fiji-mcp
+```
+
+Verify with `codex mcp list` and remove with `codex mcp remove fiji-mcp`.
 
 #### Claude Desktop
 

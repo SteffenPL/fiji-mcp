@@ -5,7 +5,34 @@ from fastmcp import FastMCP
 from fiji_mcp.action_log import ActionLog
 from fiji_mcp.fiji_client import FijiClient
 
-mcp = FastMCP("fiji-mcp")
+mcp = FastMCP(
+    "fiji-mcp",
+    instructions="""\
+Scripting interface to a running Fiji (ImageJ2) instance via WebSocket.
+
+## Starting Fiji
+If the bridge is not running, start it from the project root:
+  1. Run `./launch-fiji-bridge.sh` (or `.bat` on Windows) in the background.
+  2. Run `./fiji-health.sh` to block until the bridge is ready (no sleep needed).
+Once fiji-health exits 0, MCP tools are usable.
+
+## Core workflow
+Compose scripts with run_ij_macro (ImageJ macro) or run_script (Python/Groovy).
+Images stay in Fiji; use save_image only when the caller needs a file on disk.
+All I/O is file-path-based — no base64 in the protocol.
+
+## Visual feedback
+Use get_thumbnail frequently to see what you are working with.
+Call it after opening images, after processing steps, and before reporting
+results. It returns a display-ready PNG with the current LUT and overlays
+baked in — one call replaces duplicate/resize/enhance/save/close.
+
+## Timeouts
+Default hard ceiling is 600 s. For known-fast calls, lower it.
+For long operations, pass soft_timeout_seconds to get an execution_id,
+then poll with wait_for_execution or cancel with kill_execution.
+""",
+)
 
 _client: FijiClient | None = None
 _action_log = ActionLog()
@@ -183,6 +210,27 @@ async def save_image(title: str, format: str = "tiff", path: str | None = None) 
     if path is not None:
         params["path"] = path
     return await client.send_request("save_image", params)
+
+
+@mcp.tool
+async def get_thumbnail(
+    title: str | None = None,
+    image_id: int | None = None,
+    max_size: int = 800,
+    apply_lut: bool = True,
+) -> dict:
+    """Get a PNG thumbnail of an image with current display settings applied.
+
+    Returns a file path to a scaled-down PNG snapshot. By default the current
+    LUT, brightness/contrast, overlays, and ROI outlines are baked in
+    (apply_lut=True), so the thumbnail matches what the user sees in Fiji."""
+    client = await _get_client()
+    params: dict = {"max_size": max_size, "apply_lut": apply_lut}
+    if title is not None:
+        params["title"] = title
+    if image_id is not None:
+        params["id"] = image_id
+    return await client.send_request("get_thumbnail", params)
 
 
 @mcp.tool

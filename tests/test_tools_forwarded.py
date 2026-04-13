@@ -140,6 +140,26 @@ class TestGetImageInfo:
         )
 
 
+class TestGetThumbnail:
+    async def test_defaults(self, mock_client):
+        await srv.get_thumbnail()
+        mock_client.send_request.assert_called_once_with(
+            "get_thumbnail", {"max_size": 800, "apply_lut": True}
+        )
+
+    async def test_by_title(self, mock_client):
+        await srv.get_thumbnail(title="a.tif")
+        mock_client.send_request.assert_called_once_with(
+            "get_thumbnail", {"title": "a.tif", "max_size": 800, "apply_lut": True}
+        )
+
+    async def test_by_id_no_lut(self, mock_client):
+        await srv.get_thumbnail(image_id=3, apply_lut=False, max_size=400)
+        mock_client.send_request.assert_called_once_with(
+            "get_thumbnail", {"id": 3, "max_size": 400, "apply_lut": False}
+        )
+
+
 class TestSaveImage:
     async def test_defaults(self, mock_client):
         await srv.save_image("a.tif")

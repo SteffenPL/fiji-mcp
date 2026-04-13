@@ -26,3 +26,10 @@ packages = ["src/fiji_mcp"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[dependency-groups]
+dev = [
+    "numpy>=2.4.4",
+    "scipy>=1.17.1",
+    "tifffile>=2026.3.3",
+]

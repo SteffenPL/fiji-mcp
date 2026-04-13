@@ -34,5 +34,8 @@ fiji-plugin/target/
 # Claude Code local settings
 .claude/settings.local.json
 
+# Eval results (regenerated each run)
+evals/results/
+
 # Git worktrees
 .worktrees/

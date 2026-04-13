@@ -30,8 +30,10 @@ def compute_metrics(output_path: str, reference_path: str) -> dict:
     union = np.count_nonzero(output | reference)
     iou = intersection / union if union > 0 else 0.0
 
-    _, count_ref = label(reference)
-    _, count_out = label(output)
+    # Use 8-connectivity to match ImageJ's connected-component convention.
+    struct_8 = np.ones((3, 3), dtype=int)
+    _, count_ref = label(reference, structure=struct_8)
+    _, count_out = label(output, structure=struct_8)
 
     return {
         "task": "nucleus-seg",

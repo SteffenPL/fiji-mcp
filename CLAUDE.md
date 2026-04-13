@@ -36,6 +36,46 @@ Note: the Jaunch launcher's `--run` flag has known issues (fiji/fiji#416); use `
 - Default execution hard ceiling: 600s (configurable per call via `hard_timeout_seconds`); opt-in long-poll via `soft_timeout_seconds` plus `wait_for_execution` and `kill_execution` — see `docs/superpowers/specs/2026-04-10-execution-result-envelope-design.md`
 - WebSocket connect timeout: 5s
 
+## Launching Fiji
+
+Three shell scripts manage the Fiji lifecycle:
+
+- `./launch-fiji.sh` — starts vanilla Fiji (no bridge)
+- `./launch-fiji-bridge.sh` — starts Fiji **and** auto-starts the MCP bridge via `-eval 'run("Start Bridge");'`
+- `./fiji-health.sh [timeout_seconds]` — polls the bridge WebSocket until it responds (default 10 s); exit 0 = ready, exit 1 = timeout
+
+Claude agents can start Fiji autonomously: run `./launch-fiji-bridge.sh` in the background, then immediately run `./fiji-health.sh` (no sleep needed — the health check handles the polling). Once `fiji-health.sh` exits 0, the bridge is live and MCP tools are usable.
+
+## Eval harness
+
+Evaluation tasks live under `evals/` with reference algorithms kept separate in `evals-internal/` (hidden from subagents to prevent copying).
+
+```
+evals/
+├── run_eval.md              # orchestrator prompt (run as Claude Code session)
+├── nucleus-seg/             # one task directory per eval
+│   ├── prompt.md            # subagent task instructions
+│   ├── check.py             # deterministic metric checker (IoU, cell counts)
+│   └── fixtures/
+│       ├── nuclei.tif       # input image
+│       └── generate_nuclei.py
+└── results/                 # gitignored, regenerated each run
+    └── summary.json
+
+evals-internal/              # ground-truth pipelines, invisible to subagents
+└── nucleus-seg/
+    └── ground_truth.ijm
+```
+
+Key conventions:
+
+- **Orchestrator** (`evals/run_eval.md`) is an LLM-driven prompt, not a shell script — it can adapt to failures and scale to parallel subagents.
+- **Subagent isolation**: each task is spawned as an independent Agent so it can't see other tasks or reference algorithms.
+- **File-based checking**: `check.py` scores actual output artifacts (masks, tables) rather than parsing LLM prose.
+- **Shared bridge**: the same running Fiji instance generates ground truth and runs subagent tasks.
+
+Design spec: `docs/superpowers/specs/2026-04-13-eval-harness-design.md`
+
 ## Bug tracking
 
 This project uses [`tk`](https://github.com/...) for issue tracking. Tickets live in `.tickets/` as markdown files with short prefix-matching IDs (e.g. `fm-9cbk`).

@@ -10,11 +10,15 @@ mcp = FastMCP(
     instructions="""\
 Scripting interface to a running Fiji (ImageJ2) instance via WebSocket.
 
-## Starting Fiji
-If the bridge is not running, start it from the project root:
-  1. Run `./launch-fiji-bridge.sh` (or `.bat` on Windows) in the background.
-  2. Run `./fiji-health.sh` to block until the bridge is ready (no sleep needed).
-Once fiji-health exits 0, MCP tools are usable.
+## Starting the bridge
+The fiji-mcp-bridge plugin must be running inside Fiji before tools work.
+Use status to check. If not running:
+  1. Start Fiji with the bridge: either use the convenience scripts
+     (`./launch-fiji-bridge.sh`, `./fiji-health.sh`) from the project root,
+     or start Fiji manually and run Plugins > Start Bridge
+     (CLI: `fiji -eval 'run("Start Bridge");'`).
+  2. Verify with `./fiji-health.sh` or by calling status.
+No sleep needed between starting and checking — the health script polls.
 
 ## Core workflow
 Compose scripts with run_ij_macro (ImageJ macro) or run_script (Python/Groovy).

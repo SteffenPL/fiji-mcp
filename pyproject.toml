@@ -26,6 +26,7 @@ packages = ["src/fiji_mcp"]
 artifacts = ["src/fiji_mcp/data/*.jar"]
 
 [tool.pytest.ini_options]
+testpaths = ["tests/unit"]
 asyncio_mode = "auto"
 
 [dependency-groups]

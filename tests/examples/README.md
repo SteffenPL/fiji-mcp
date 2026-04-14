@@ -8,8 +8,8 @@ Copy `.mcp.json` and `CLAUDE.md` into your project root, then update the path in
 
 1. Copy the files:
    ```bash
-   cp examples/test-env/.mcp.json /path/to/your/project/
-   cp examples/test-env/CLAUDE.md /path/to/your/project/
+   cp tests/examples/test-env/.mcp.json /path/to/your/project/
+   cp tests/examples/test-env/CLAUDE.md /path/to/your/project/
    ```
 2. Edit `.mcp.json` and replace `/absolute/path/to/fiji-mcp` with the actual path
 3. Start Fiji and enable the bridge (`Plugins > fiji-mcp > Start Bridge`)

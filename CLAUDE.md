@@ -47,28 +47,31 @@ Claude agents can start Fiji autonomously: run `./launch-fiji-bridge.sh` in the 
 
 ## Eval harness
 
-Evaluation tasks live under `evals/` with reference algorithms kept separate in `evals-internal/` (hidden from subagents to prevent copying).
+Evaluation tasks live under `tests/evals/` with reference algorithms kept separate in `tests/evals-internal/` (hidden from subagents to prevent copying).
 
 ```
-evals/
-├── run_eval.md              # orchestrator prompt (run as Claude Code session)
-├── nucleus-seg/             # one task directory per eval
-│   ├── prompt.md            # subagent task instructions
-│   ├── check.py             # deterministic metric checker (IoU, cell counts)
-│   └── fixtures/
-│       ├── nuclei.tif       # input image
-│       └── generate_nuclei.py
-└── results/                 # gitignored, regenerated each run
-    └── summary.json
-
-evals-internal/              # ground-truth pipelines, invisible to subagents
-└── nucleus-seg/
-    └── ground_truth.ijm
+tests/
+├── unit/                    # Python unit tests (pytest)
+├── evals/
+│   ├── run_eval.md          # orchestrator prompt (run as Claude Code session)
+│   ├── nucleus-seg/         # one task directory per eval
+│   │   ├── prompt.md        # subagent task instructions
+│   │   ├── check.py         # deterministic metric checker (IoU, cell counts)
+│   │   └── fixtures/
+│   │       ├── nuclei.tif   # input image
+│   │       └── generate_nuclei.py
+│   └── results/             # gitignored, regenerated each run
+│       └── summary.json
+├── evals-internal/          # ground-truth pipelines, invisible to subagents
+│   └── nucleus-seg/
+│       └── ground_truth.ijm
+└── examples/                # sample MCP client configs
+    └── test-env/
 ```
 
 Key conventions:
 
-- **Orchestrator** (`evals/run_eval.md`) is an LLM-driven prompt, not a shell script — it can adapt to failures and scale to parallel subagents.
+- **Orchestrator** (`tests/evals/run_eval.md`) is an LLM-driven prompt, not a shell script — it can adapt to failures and scale to parallel subagents.
 - **Subagent isolation**: each task is spawned as an independent Agent so it can't see other tasks or reference algorithms.
 - **File-based checking**: `check.py` scores actual output artifacts (masks, tables) rather than parsing LLM prose.
 - **Shared bridge**: the same running Fiji instance generates ground truth and runs subagent tasks.

@@ -1,5 +1,16 @@
 # fiji-mcp
 
+> **Prior art & related projects** — several other projects bridge bioimage tools with LLMs via MCP.
+> This project was developed independently but shares the same problem space:
+>
+> - [fiji_mcp](https://github.com/NicoKiaru/fiji_mcp) (NicoKiaru) — Fiji MCP via PyImageJ (in-process, Groovy)
+> - [fiji-mcp-bridge](https://github.com/kusumotok/fiji-mcp-bridge) (kusumotok) — Fiji MCP via TCP sockets, curated tool wrappers
+> - [napari-mcp](https://github.com/royerlab/napari-mcp) (royerlab) — napari MCP server, PyPI published
+> - [bioimage-mcp](https://github.com/cqian89/bioimage-mcp) (cqian89) — artifact-based I/O, isolated conda envs
+> - [bioimage-mcp-server](https://github.com/Ichoran/bioimage-mcp-server) (Ichoran) — Java MCP for Bio-Formats
+> - [BioImage-Agent](https://github.com/llnl/bioimage-agent) (LLNL) — napari plugin over MCP via sockets
+> - [cellpose_mcp](https://github.com/surajinacademia/cellpose_mcp) — Cellpose segmentation MCP
+
 An MCP server that gives LLM agents (Claude Code, Claude Desktop, Cursor, etc.) a live scripting interface into a running [Fiji](https://fiji.sc/) instance via WebSocket.
 
 ```
@@ -10,9 +21,16 @@ LLM Agent  --(MCP/stdio)-->  Python MCP Server  --(WebSocket)-->  Fiji + Java Pl
 
 - **Run macros and scripts** in Fiji from your LLM conversation (`run_ij_macro`, `run_script`, `run_command`)
 - **Inspect images** — list open images, get metadata, save to disk
+- **Visual feedback via thumbnails** — `get_thumbnail` returns a display-ready PNG with the current LUT and overlays baked in, so the LLM can *see* what it's working with
 - **Observe user actions** — the plugin captures what the biologist does in Fiji's GUI (commands, image opens/closes, ROI edits) and streams it to the LLM via an event log
 - **Export workflows** — convert a recorded action sequence to a runnable ImageJ macro
 - **Search commands** — find Fiji menu commands by name
+
+### Thumbnails and visual models
+
+This project is designed for use with **vision-capable LLMs** (Claude, GPT-4o, Gemini, etc.). The `get_thumbnail` tool is the primary way the agent sees image data — it returns a scaled PNG with the current LUT, brightness/contrast, and overlays already applied, exactly as the image appears in Fiji.
+
+Agents should call `get_thumbnail` liberally: after opening an image, after each processing step, and before reporting results. This gives the model visual ground truth to catch mistakes (wrong channel, bad threshold, off-target ROI) that text-only metadata would miss. The thumbnail is file-path-based — no base64 in the protocol — so it works efficiently even for large images.
 
 ### Available tools
 
@@ -23,6 +41,7 @@ LLM Agent  --(MCP/stdio)-->  Python MCP Server  --(WebSocket)-->  Fiji + Java Pl
 | `run_command` | Run a Fiji menu command by name |
 | `list_images` | List all open images |
 | `get_image_info` | Get image metadata (dimensions, type, path) |
+| `get_thumbnail` | Get a display-ready PNG snapshot (LUT + overlays baked in) |
 | `save_image` | Save an image to disk (TIFF, PNG, JPEG) |
 | `list_commands` | Search available menu commands |
 | `get_results_table` | Export the Results Table to CSV |
@@ -177,19 +196,6 @@ uv run python tests/smoke_test.py
 cd fiji-plugin
 JAVA_HOME="../Fiji/java/macos-arm64/zulu21.42.19-ca-jdk21.0.7-macosx_aarch64/zulu-21.jdk/Contents/Home" mvn package -q
 ```
-
-## Related projects
-
-This project was inspired by and builds on ideas from existing bioimage MCP servers:
-
-| Project | Target | Description |
-|---|---|---|
-| [fiji_mcp](https://github.com/NicoKiaru/fiji_mcp) (NicoKiaru) | Fiji | Proof-of-concept Fiji MCP with dual Java+Python architecture |
-| [napari-mcp](https://github.com/royerlab/napari-mcp) (royerlab) | napari | Most mature bioimage MCP server, PyPI published, 16 tools |
-| [bioimage-mcp](https://github.com/cqian89/bioimage-mcp) (cqian89) | General | Artifact-based I/O with isolated conda environments |
-| [bioimage-mcp-server](https://github.com/Ichoran/bioimage-mcp-server) (Ichoran) | Bio-Formats | Java MCP server for reading 150+ microscopy formats |
-| [BioImage-Agent](https://github.com/llnl/bioimage-agent) (LLNL) | napari | Napari plugin exposing viewer over MCP via sockets |
-| [cellpose_mcp](https://github.com/surajinacademia/cellpose_mcp) | Cellpose | MCP server for Cellpose segmentation (PyPI published) |
 
 ## License
 

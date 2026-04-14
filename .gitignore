@@ -16,6 +16,9 @@ build/
 # pytest
 .pytest_cache/
 
+# ruff
+.ruff_cache/
+
 # Java / Maven
 fiji-plugin/target/
 *.class

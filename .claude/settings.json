@@ -5,7 +5,7 @@
       "Bash(\"$JAVA_HOME\":*)",
       "Bash(mvn :*)",
       "Bash(mvn:*)",
-      "Bash(cd /Users/SteffenPlunder/Documents/Workspace/fiji-mcp/fiji-plugin:*)"
+      "Bash(cd fiji-plugin:*)"
     ]
   },
   "enabledPlugins": {

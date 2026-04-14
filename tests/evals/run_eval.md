@@ -13,7 +13,7 @@ You are running the fiji-mcp evaluation harness. You have access to the fiji-mcp
 
 ## Step 1: Verify bridge
 
-Run `./fiji-health.sh` via Bash. If it exits non-zero, print "Bridge not ready — start Fiji with ./launch-fiji-bridge.sh first" and stop.
+Call `status` via the fiji-mcp MCP tools. The server auto-launches Fiji if `FIJI_HOME` is set. If the connection fails, print the error and stop.
 
 ## Step 2: Generate ground truth
 

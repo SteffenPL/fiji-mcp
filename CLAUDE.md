@@ -28,22 +28,18 @@ cd fiji-plugin && mvn package -q
 cp target/fiji-mcp-bridge-0.1.0.jar ../Fiji/plugins/
 ```
 
-Note: the Jaunch launcher's `--run` flag has known issues (fiji/fiji#416); use `./launch-fiji.sh` to start Fiji.
+Note: the Jaunch launcher's `--run` flag has known issues (fiji/fiji#416).
 
 ## Configuration
 
 - Port: `8765` (override via `FIJI_MCP_PORT`, read by both Python and Java)
-- Default execution hard ceiling: 600s (configurable per call via `hard_timeout_seconds`); opt-in long-poll via `soft_timeout_seconds` plus `wait_for_execution` and `kill_execution`- WebSocket connect timeout: 5s
+- `FIJI_HOME`: path to `Fiji.app` — enables auto-launch and plugin install
+- Default execution hard ceiling: 600s (configurable per call via `hard_timeout_seconds`); opt-in long-poll via `soft_timeout_seconds` plus `wait_for_execution` and `kill_execution`
+- WebSocket connect timeout: 5s
 
 ## Launching Fiji
 
-Three shell scripts manage the Fiji lifecycle:
-
-- `./launch-fiji.sh` — starts vanilla Fiji (no bridge)
-- `./launch-fiji-bridge.sh` — starts Fiji **and** auto-starts the MCP bridge via `-eval 'run("Start Bridge");'`
-- `./fiji-health.sh [timeout_seconds]` — polls the bridge WebSocket until it responds (default 10 s); exit 0 = ready, exit 1 = timeout
-
-Claude agents can start Fiji autonomously: run `./launch-fiji-bridge.sh` in the background, then immediately run `./fiji-health.sh` (no sleep needed — the health check handles the polling). Once `fiji-health.sh` exits 0, the bridge is live and MCP tools are usable.
+The MCP server auto-launches Fiji when `FIJI_HOME` is set and the bridge plugin is installed. On first tool call, if the bridge WebSocket is not reachable, the server launches `<FIJI_HOME>/fiji -eval 'run("Start Bridge");'` and polls for readiness.
 
 ## Eval harness
 

@@ -189,4 +189,4 @@ cp target/fiji-mcp-bridge-0.1.0.jar ../src/fiji_mcp/data/
 
 ## License
 
-TBD
+[MIT](LICENSE)

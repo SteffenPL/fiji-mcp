@@ -24,8 +24,8 @@
         <maven.compiler.target>1.8</maven.compiler.target>
         <maven.compiler.release>8</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <license.copyrightOwners>N/A</license.copyrightOwners>
-        <license.licenseName>N/A</license.licenseName>
+        <license.copyrightOwners>Steffen Plunder</license.copyrightOwners>
+        <license.licenseName>MIT</license.licenseName>
         <!-- Disable pom-scijava enforcer checks that require full OSS metadata -->
         <enforcer.skip>true</enforcer.skip>
     </properties>

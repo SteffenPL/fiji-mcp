@@ -11,7 +11,7 @@ LLM Agent → (stdio MCP) → Python server → (ws://localhost:8765) → Fiji +
 - **Python** (`src/fiji_mcp/`): fastmcp server, WebSocket client, event buffer
 - **Java** (`fiji-plugin/`): Fiji plugin, WebSocket server, script executor, event emitter
 
-Design spec: `docs/superpowers/specs/2026-04-09-fiji-mcp-design.md`
+Design spec: `docs/specs/2026-04-09-fiji-mcp-design.md` (private)
 
 ## Design principles
 
@@ -33,8 +33,7 @@ Note: the Jaunch launcher's `--run` flag has known issues (fiji/fiji#416); use `
 ## Configuration
 
 - Port: `8765` (override via `FIJI_MCP_PORT`, read by both Python and Java)
-- Default execution hard ceiling: 600s (configurable per call via `hard_timeout_seconds`); opt-in long-poll via `soft_timeout_seconds` plus `wait_for_execution` and `kill_execution` — see `docs/superpowers/specs/2026-04-10-execution-result-envelope-design.md`
-- WebSocket connect timeout: 5s
+- Default execution hard ceiling: 600s (configurable per call via `hard_timeout_seconds`); opt-in long-poll via `soft_timeout_seconds` plus `wait_for_execution` and `kill_execution`- WebSocket connect timeout: 5s
 
 ## Launching Fiji
 
@@ -74,11 +73,11 @@ Key conventions:
 - **File-based checking**: `check.py` scores actual output artifacts (masks, tables) rather than parsing LLM prose.
 - **Shared bridge**: the same running Fiji instance generates ground truth and runs subagent tasks.
 
-Design spec: `docs/superpowers/specs/2026-04-13-eval-harness-design.md`
+Design spec: `docs/specs/2026-04-13-eval-harness-design.md` (private)
 
 ## Bug tracking
 
-This project uses [`tk`](https://github.com/...) for issue tracking. Tickets live in `.tickets/` as markdown files with short prefix-matching IDs (e.g. `fm-9cbk`).
+This project uses `tk` for issue tracking. Tickets live in `.tickets/` as markdown files with short prefix-matching IDs (e.g. `fm-9cbk`).
 
 - `tk list` — all tickets
 - `tk ready` — unblocked open/in-progress tickets, sorted by priority
@@ -91,7 +90,7 @@ This project uses [`tk`](https://github.com/...) for issue tracking. Tickets liv
 - `tk --help` for everything else
 
 Conventions for this repo:
-- **Feedback sessions** (`docs/superpowers/feedback_N.md`) are the canonical source for bridge UX bugs and proposals. When creating tickets from feedback, set `--external-ref feedback-N` and tag `feedback`.
+- **Feedback sessions** are the canonical source for bridge UX bugs and proposals. When creating tickets from feedback, set `--external-ref feedback-N` and tag `feedback`.
 - **Priority 0** is reserved for bugs that silently break core workflows (e.g. an observability gap that hides other bugs, or a regression that makes a canonical ImageJ command return wrong answers).
 - **Link vs dep**: use `tk dep` only when one ticket literally cannot start until another is done (e.g. eval harness depends on headless mode). Use `tk link` for "these two fixes are related / would have caught each other" — the common case for observability bugs.
 - When running `tk create` from tool calls, always capture the returned ID so follow-up `tk close` / `tk dep` / `tk link` calls can use it.

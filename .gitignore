@@ -41,3 +41,6 @@ evals/results/
 
 # Git worktrees
 .worktrees/
+
+# Internal design docs (kept in private repo)
+docs/superpowers/

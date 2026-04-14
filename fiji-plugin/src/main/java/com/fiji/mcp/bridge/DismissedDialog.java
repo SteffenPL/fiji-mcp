@@ -5,4 +5,19 @@ package com.fiji.mcp.bridge;
  * {@link DialogWatchdog} at the moment of dispose, then serialized
  * by {@link ExecutionReporter} into the envelope.
  */
-public record DismissedDialog(String title, String text, long whenMs) { }
+public final class DismissedDialog {
+
+    private final String title;
+    private final String text;
+    private final long whenMs;
+
+    public DismissedDialog(String title, String text, long whenMs) {
+        this.title = title;
+        this.text = text;
+        this.whenMs = whenMs;
+    }
+
+    public String title() { return title; }
+    public String text() { return text; }
+    public long whenMs() { return whenMs; }
+}

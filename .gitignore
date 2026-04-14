@@ -21,6 +21,8 @@ fiji-plugin/target/
 *.class
 *.jar
 *.war
+# Exception: bundled JAR in Python package data
+!src/fiji_mcp/data/*.jar
 
 # IDE
 .idea/

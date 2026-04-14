@@ -49,8 +49,8 @@ public class ExecutionLock {
     public ExecutionLock(Frame ijFrame) {
         this.ijFrame = ijFrame;
         this.glassPane = new LockGlassPane();
-        if (ijFrame instanceof javax.swing.JFrame jf) {
-            jf.setGlassPane(glassPane);
+        if (ijFrame instanceof javax.swing.JFrame) {
+            ((javax.swing.JFrame) ijFrame).setGlassPane(glassPane);
         }
     }
 

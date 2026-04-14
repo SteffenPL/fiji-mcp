@@ -29,7 +29,7 @@ public class EventEmitter implements ij.ImageListener, ij.gui.RoiListener {
     private final Map<Object, Long> moduleStartTimes = new ConcurrentHashMap<>();
 
     public EventEmitter() {
-        enabledCategories.addAll(Set.of("command", "image", "roi", "log"));
+        enabledCategories.addAll(java.util.Arrays.asList("command", "image", "roi", "log"));
     }
 
     public void setEventSink(Consumer<String> sink) {
@@ -169,14 +169,15 @@ public class EventEmitter implements ij.ImageListener, ij.gui.RoiListener {
         // constructed by ParticleAnalyzer with null imp). Dereferencing imp
         // here previously NPE'd and aborted analysis mid-pass — see fm-9cbk.
         if (imp == null) return;
-        String eventName = switch (id) {
-            case ij.gui.RoiListener.CREATED   -> "roi_created";
-            case ij.gui.RoiListener.MOVED     -> "roi_moved";
-            case ij.gui.RoiListener.MODIFIED  -> "roi_modified";
-            case ij.gui.RoiListener.COMPLETED -> "roi_completed";
-            case ij.gui.RoiListener.DELETED   -> "roi_deleted";
-            default -> null;
-        };
+        String eventName;
+        switch (id) {
+            case ij.gui.RoiListener.CREATED:   eventName = "roi_created"; break;
+            case ij.gui.RoiListener.MOVED:     eventName = "roi_moved"; break;
+            case ij.gui.RoiListener.MODIFIED:  eventName = "roi_modified"; break;
+            case ij.gui.RoiListener.COMPLETED: eventName = "roi_completed"; break;
+            case ij.gui.RoiListener.DELETED:   eventName = "roi_deleted"; break;
+            default: eventName = null;
+        }
         if (eventName == null) return;
 
         JsonObject data = new JsonObject();
@@ -272,9 +273,9 @@ public class EventEmitter implements ij.ImageListener, ij.gui.RoiListener {
     public void onOutput(org.scijava.console.OutputEvent event) {
         if (!enabledCategories.contains("log")) return;
         String message = event.getOutput();
-        if (message == null || message.isBlank()) return;
+        if (message == null || message.trim().isEmpty()) return;
         JsonObject data = new JsonObject();
-        data.addProperty("message", message.strip());
+        data.addProperty("message", message.trim());
         data.addProperty("level", event.isStderr() ? "error" : "info");
         emit("log", "log_message", data);
     }
@@ -315,13 +316,13 @@ public class EventEmitter implements ij.ImageListener, ij.gui.RoiListener {
     }
 
     private String typeName(int type) {
-        return switch (type) {
-            case ImagePlus.GRAY8 -> "8-bit";
-            case ImagePlus.GRAY16 -> "16-bit";
-            case ImagePlus.GRAY32 -> "32-bit";
-            case ImagePlus.COLOR_256 -> "8-bit color";
-            case ImagePlus.COLOR_RGB -> "RGB";
-            default -> "unknown";
-        };
+        switch (type) {
+            case ImagePlus.GRAY8:      return "8-bit";
+            case ImagePlus.GRAY16:     return "16-bit";
+            case ImagePlus.GRAY32:     return "32-bit";
+            case ImagePlus.COLOR_256:  return "8-bit color";
+            case ImagePlus.COLOR_RGB:  return "RGB";
+            default:                   return "unknown";
+        }
     }
 }

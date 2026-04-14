@@ -1,9 +1,17 @@
 """MCP server bridging LLM agents with a running Fiji instance via WebSocket."""
 
+from __future__ import annotations
+
+import asyncio
+import subprocess
+import sys
+
 from fastmcp import FastMCP
 
 from fiji_mcp.action_log import ActionLog
 from fiji_mcp.fiji_client import FijiClient
+from fiji_mcp.fiji_home import FijiNotFoundError, resolve_fiji_home
+from fiji_mcp.install import JAR_NAME
 
 mcp = FastMCP(
     "fiji-mcp",
@@ -11,14 +19,11 @@ mcp = FastMCP(
 Scripting interface to a running Fiji (ImageJ2) instance via WebSocket.
 
 ## Starting the bridge
-The fiji-mcp-bridge plugin must be running inside Fiji before tools work.
-Use status to check. If not running:
-  1. Start Fiji with the bridge: either use the convenience scripts
-     (`./launch-fiji-bridge.sh`, `./fiji-health.sh`) from the project root,
-     or start Fiji manually and run Plugins > Start Bridge
-     (CLI: `fiji -eval 'run("Start Bridge");'`).
-  2. Verify with `./fiji-health.sh` or by calling status.
-No sleep needed between starting and checking — the health script polls.
+If FIJI_HOME is set, the server auto-launches Fiji with the bridge on the
+first tool call — no manual steps needed. If Fiji is already running with
+the bridge active, the server connects immediately.
+To check: call status. If not connected and auto-launch is unavailable,
+start Fiji manually and run Plugins > fiji-mcp > Start Bridge.
 
 ## Core workflow
 Compose scripts with run_ij_macro (ImageJ macro) or run_script (Python/Groovy).
@@ -42,17 +47,71 @@ _client: FijiClient | None = None
 _action_log = ActionLog()
 
 
+_STARTUP_POLL_TIMEOUT = 30  # seconds to wait for Fiji to start
+
+
 async def _get_client() -> FijiClient:
-    """Lazy-connect to Fiji; register the ActionLog as the event callback."""
+    """Lazy-connect to Fiji; auto-launch if FIJI_HOME is available."""
     global _client
-    if _client is None or not _client.connected:
+    if _client is not None and _client.connected:
+        return _client
+
+    _client = FijiClient()
+    _client.on_event(_action_log.append)
+
+    # First try: maybe the bridge is already running.
+    try:
+        await _client.connect()
+        return _client
+    except ConnectionError:
+        pass
+
+    # Bridge not running — try to diagnose and auto-launch.
+    try:
+        info = resolve_fiji_home()
+    except FijiNotFoundError:
+        raise ConnectionError(
+            "Fiji bridge is not running and no Fiji installation was found. "
+            "Set FIJI_HOME in your MCP config env section, e.g.\n"
+            '  "env": { "FIJI_HOME": "/path/to/Fiji.app" }'
+        )
+
+    # Check plugin is installed
+    if not (info.plugins_dir / JAR_NAME).exists():
+        raise ConnectionError(
+            f"Fiji found at {info.path} but the bridge plugin is not installed. "
+            "Run: uv run fiji-mcp install"
+        )
+
+    # Auto-launch Fiji with bridge
+    print(f"[fiji-mcp] Launching Fiji from {info.launcher} ...", file=sys.stderr)
+    try:
+        subprocess.Popen(
+            [str(info.launcher), "-eval", 'run("Start Bridge");'],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError as exc:
+        raise ConnectionError(
+            f"Failed to launch Fiji at {info.launcher}: {exc}"
+        ) from exc
+
+    # Poll for bridge readiness
+    for i in range(_STARTUP_POLL_TIMEOUT):
+        await asyncio.sleep(1)
         try:
-            _client = FijiClient()
-            _client.on_event(_action_log.append)
             await _client.connect()
+            print("[fiji-mcp] Bridge is ready.", file=sys.stderr)
+            return _client
         except ConnectionError:
-            raise
-    return _client
+            pass
+
+    raise ConnectionError(
+        f"Fiji was launched but the bridge did not become ready within "
+        f"{_STARTUP_POLL_TIMEOUT}s. Check that the plugin loaded correctly "
+        f"in Fiji's Plugins menu."
+    )
 
 
 _DEFAULT_HARD_TIMEOUT_SECONDS = 600

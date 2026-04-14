@@ -324,8 +324,9 @@ public class ExecutionReporter {
 
         Throwable cur = t;
         while (cur != null) {
-            if (cur instanceof javax.script.ScriptException sx && sx.getLineNumber() > 0) {
-                err.addProperty("line", sx.getLineNumber());
+            if (cur instanceof javax.script.ScriptException
+                    && ((javax.script.ScriptException) cur).getLineNumber() > 0) {
+                err.addProperty("line", ((javax.script.ScriptException) cur).getLineNumber());
                 return err;
             }
             cur = cur.getCause();
@@ -342,12 +343,12 @@ public class ExecutionReporter {
         if (t instanceof KilledException) return "Killed";
         if (t instanceof HardTimeoutException) return "TimeoutError";
         if (t instanceof DialogDismissedException) return "DialogDismissed";
-        return switch (typeHint) {
-            case "macro"   -> "MacroError";
-            case "script"  -> "ScriptError";
-            case "command" -> "CommandError";
-            default        -> "ExecutionError";
-        };
+        switch (typeHint) {
+            case "macro":   return "MacroError";
+            case "script":  return "ScriptError";
+            case "command": return "CommandError";
+            default:        return "ExecutionError";
+        }
     }
 
     private String diff(String before, String after) {

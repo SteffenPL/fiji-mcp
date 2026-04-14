@@ -74,21 +74,29 @@ public class ImageService {
         if (params.has("path")) {
             path = params.get("path").getAsString();
         } else {
-            String ext = switch (format.toLowerCase()) {
-                case "png" -> ".png";
-                case "jpg", "jpeg" -> ".jpg";
-                default -> ".tif";
-            };
+            String fmt = format.toLowerCase();
+            String ext;
+            if ("png".equals(fmt)) {
+                ext = ".png";
+            } else if ("jpg".equals(fmt) || "jpeg".equals(fmt)) {
+                ext = ".jpg";
+            } else {
+                ext = ".tif";
+            }
             path = System.getProperty("java.io.tmpdir") + File.separator
                     + "fiji_mcp_" + System.currentTimeMillis() + ext;
         }
 
         FileSaver saver = new FileSaver(imp);
-        boolean ok = switch (format.toLowerCase()) {
-            case "png" -> saver.saveAsPng(path);
-            case "jpg", "jpeg" -> saver.saveAsJpeg(path);
-            default -> saver.saveAsTiff(path);
-        };
+        String fmtLower = format.toLowerCase();
+        boolean ok;
+        if ("png".equals(fmtLower)) {
+            ok = saver.saveAsPng(path);
+        } else if ("jpg".equals(fmtLower) || "jpeg".equals(fmtLower)) {
+            ok = saver.saveAsJpeg(path);
+        } else {
+            ok = saver.saveAsTiff(path);
+        }
         if (!ok) {
             throw new RuntimeException("Failed to save image");
         }
@@ -202,13 +210,13 @@ public class ImageService {
     }
 
     private String typeName(int type) {
-        return switch (type) {
-            case ImagePlus.GRAY8 -> "8-bit";
-            case ImagePlus.GRAY16 -> "16-bit";
-            case ImagePlus.GRAY32 -> "32-bit";
-            case ImagePlus.COLOR_256 -> "8-bit color";
-            case ImagePlus.COLOR_RGB -> "RGB";
-            default -> "unknown";
-        };
+        switch (type) {
+            case ImagePlus.GRAY8:      return "8-bit";
+            case ImagePlus.GRAY16:     return "16-bit";
+            case ImagePlus.GRAY32:     return "32-bit";
+            case ImagePlus.COLOR_256:  return "8-bit color";
+            case ImagePlus.COLOR_RGB:  return "RGB";
+            default:                   return "unknown";
+        }
     }
 }

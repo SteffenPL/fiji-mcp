@@ -343,7 +343,7 @@ class ExecutionReporterTest {
     @Test
     void runReported_promotesDialogDismissedErrorWhenScriptHadNoNaturalError() {
         // Use a fake watchdog factory that pre-records one dismissal.
-        DialogWatchdog fake = new FakeWatchdog(List.of(
+        DialogWatchdog fake = new FakeWatchdog(java.util.Collections.singletonList(
                 new DismissedDialog("No image", "There are no images open.", 100)));
         ExecutionReporter custom = new ExecutionReporter(
                 () -> "", () -> "test-image.tif", stderrTee,
@@ -364,7 +364,7 @@ class ExecutionReporterTest {
 
     @Test
     void runReported_preservesScriptErrorWhenDialogAlsoDismissed() {
-        DialogWatchdog fake = new FakeWatchdog(List.of(
+        DialogWatchdog fake = new FakeWatchdog(java.util.Collections.singletonList(
                 new DismissedDialog("oops", "", 50)));
         ExecutionReporter custom = new ExecutionReporter(
                 () -> "", () -> "test-image.tif", stderrTee,
@@ -397,7 +397,7 @@ class ExecutionReporterTest {
                 events.add("body");
                 return null;
             });
-            assertEquals(List.of("acquire", "body", "release"), events);
+            assertEquals(java.util.Arrays.asList("acquire", "body", "release"), events);
         } finally {
             custom.shutdown();
         }

@@ -21,7 +21,7 @@ Design spec: `docs/superpowers/specs/2026-04-09-fiji-mcp-design.md`
 
 ## Java builds
 
-Fiji is installed locally in `Fiji/` (gitignored) and ships with a bundled Zulu JDK 21 at `Fiji/java/macos-arm64/zulu21.42.19-ca-jdk21.0.7-macosx_aarch64/zulu-21.jdk/Contents/Home`. `JAVA_HOME` points there automatically in Claude Code sessions via `.claude/settings.local.json`.
+The Java plugin targets **Java 8** for maximum Fiji compatibility. Fiji is installed locally in `Fiji/` (gitignored) and ships with a bundled Zulu JDK 21 at `Fiji/java/macos-arm64/zulu21.42.19-ca-jdk21.0.7-macosx_aarch64/zulu-21.jdk/Contents/Home`. `JAVA_HOME` points there automatically in Claude Code sessions via `.claude/settings.local.json`.
 
 ```
 cd fiji-plugin && mvn package -q

@@ -28,11 +28,11 @@ public final class AwtDialogProbe implements DialogProbe {
     /** Snapshot all currently-open Dialog instances visible to AWT. */
     public static List<DialogProbe> currentAll() {
         Window[] windows = Window.getWindows();
-        if (windows == null) return List.of();
+        if (windows == null) return java.util.Collections.emptyList();
         List<DialogProbe> result = new ArrayList<>(windows.length);
         for (Window w : windows) {
-            if (w instanceof Dialog d) {
-                result.add(new AwtDialogProbe(d));
+            if (w instanceof Dialog) {
+                result.add(new AwtDialogProbe((Dialog) w));
             }
         }
         return result;
@@ -74,20 +74,20 @@ public final class AwtDialogProbe implements DialogProbe {
     private static void collectText(Container container, StringBuilder sb) {
         for (Component child : container.getComponents()) {
             try {
-                if (child instanceof Label l) {
-                    appendLine(sb, l.getText());
-                } else if (child instanceof TextComponent tc) {
-                    appendLine(sb, tc.getText());
-                } else if (child instanceof javax.swing.JLabel jl) {
-                    appendLine(sb, jl.getText());
-                } else if (child instanceof javax.swing.text.JTextComponent jtc) {
-                    appendLine(sb, jtc.getText());
+                if (child instanceof Label) {
+                    appendLine(sb, ((Label) child).getText());
+                } else if (child instanceof TextComponent) {
+                    appendLine(sb, ((TextComponent) child).getText());
+                } else if (child instanceof javax.swing.JLabel) {
+                    appendLine(sb, ((javax.swing.JLabel) child).getText());
+                } else if (child instanceof javax.swing.text.JTextComponent) {
+                    appendLine(sb, ((javax.swing.text.JTextComponent) child).getText());
                 }
             } catch (Throwable ignored) {
                 // Best-effort — skip components that throw on text access.
             }
-            if (child instanceof Container c) {
-                collectText(c, sb);
+            if (child instanceof Container) {
+                collectText((Container) child, sb);
             }
         }
     }

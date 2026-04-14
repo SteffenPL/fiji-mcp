@@ -132,7 +132,7 @@ public class ScriptExecutor {
         String ext = extensionFor(language);
         Path tempScript = Files.createTempFile("fiji_mcp_", "." + ext);
         try {
-            Files.writeString(tempScript, code);
+            Files.write(tempScript, code.getBytes(java.nio.charset.StandardCharsets.UTF_8));
             Future<org.scijava.script.ScriptModule> future =
                     scriptService.run(tempScript.toFile(), false, (Map<String, Object>) null);
             innerRef.set(future);
@@ -188,15 +188,14 @@ public class ScriptExecutor {
     }
 
     private String extensionFor(String language) {
-        return switch (language.toLowerCase()) {
-            case "python", "jython" -> "py";
-            case "groovy" -> "groovy";
-            case "javascript", "js" -> "js";
-            case "beanshell", "bsh" -> "bsh";
-            case "clojure" -> "clj";
-            case "scala" -> "scala";
-            case "ijm", "macro" -> "ijm";
-            default -> language;
-        };
+        String lang = language.toLowerCase();
+        if ("python".equals(lang) || "jython".equals(lang)) return "py";
+        if ("groovy".equals(lang)) return "groovy";
+        if ("javascript".equals(lang) || "js".equals(lang)) return "js";
+        if ("beanshell".equals(lang) || "bsh".equals(lang)) return "bsh";
+        if ("clojure".equals(lang)) return "clj";
+        if ("scala".equals(lang)) return "scala";
+        if ("ijm".equals(lang) || "macro".equals(lang)) return "ijm";
+        return language;
     }
 }

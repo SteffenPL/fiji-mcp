@@ -53,43 +53,37 @@ Agents should call `get_thumbnail` liberally: after opening an image, after each
 
 ## Requirements
 
-- [Fiji](https://fiji.sc/) (tested with 2.16.0)
+- [Fiji](https://fiji.sc/) (any version with Java 8+)
 - Python 3.11+
 - [uv](https://docs.astral.sh/uv/) (Python package manager)
-- Java 21 (bundled with Fiji)
-- Maven (only if building the Java plugin from source)
 
 ## Installation
 
-### 1. Install the Fiji plugin
-
-**Option A: Pre-built JAR** (if available in releases)
-
-Download `fiji-mcp-bridge-0.1.0.jar` and copy it to your `Fiji/plugins/` directory.
-
-**Option B: Build from source**
+### 1. Install fiji-mcp
 
 ```bash
-cd fiji-plugin
-JAVA_HOME="/path/to/your/fiji/java/zulu-21.jdk/Contents/Home" mvn package -q
-cp target/fiji-mcp-bridge-0.1.0.jar /path/to/your/Fiji/plugins/
-```
-
-Restart Fiji after installing.
-
-### 2. Install the Python MCP server
-
-```bash
-git clone https://github.com/your-username/fiji-mcp.git
+git clone https://github.com/SteffenPL/fiji-mcp.git
 cd fiji-mcp
 uv sync
 ```
 
+### 2. Install the bridge plugin into Fiji
+
+```bash
+# Auto-discovers Fiji in standard locations:
+uv run fiji-mcp install
+
+# Or specify your Fiji path explicitly:
+uv run fiji-mcp install --fiji-home /path/to/Fiji.app
+```
+
+This copies the bridge plugin JAR into your Fiji's `plugins/` directory and checks the bundled Java version. No Maven or JDK needed.
+
 ### 3. Configure your MCP client
 
-#### Claude Code
+Add fiji-mcp to your MCP client. Set `FIJI_HOME` so the server can auto-launch Fiji when needed (optional if Fiji is in a standard location).
 
-From the fiji-mcp directory, run:
+#### Claude Code
 
 ```bash
 claude mcp add fiji-mcp -- uv run --directory /absolute/path/to/fiji-mcp fiji-mcp
@@ -103,19 +97,13 @@ Or add a `.mcp.json` file to your project root:
     "fiji-mcp": {
       "command": "uv",
       "args": ["run", "--directory", "/absolute/path/to/fiji-mcp", "fiji-mcp"],
-      "env": { "FIJI_MCP_PORT": "8765" }
+      "env": {
+        "FIJI_HOME": "/path/to/Fiji.app"
+      }
     }
   }
 }
 ```
-
-#### Codex
-
-```bash
-codex mcp add fiji-mcp --env FIJI_MCP_PORT=8765 -- uv run --directory /absolute/path/to/fiji-mcp fiji-mcp
-```
-
-Verify with `codex mcp list` and remove with `codex mcp remove fiji-mcp`.
 
 #### Claude Desktop
 
@@ -127,21 +115,21 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
     "fiji-mcp": {
       "command": "uv",
       "args": ["run", "--directory", "/absolute/path/to/fiji-mcp", "fiji-mcp"],
-      "env": { "FIJI_MCP_PORT": "8765" }
+      "env": {
+        "FIJI_HOME": "/path/to/Fiji.app"
+      }
     }
   }
 }
 ```
 
-#### Cursor
+#### Cursor / Codex
 
-Add to Cursor's MCP configuration with the same `command`, `args`, and `env` as above.
+Use the same `command`, `args`, and `env` as above in your client's MCP config.
 
 ## Usage
 
-1. **Start Fiji** and go to `Plugins > fiji-mcp > Start Bridge`
-2. **Start your MCP client** (Claude Code, Claude Desktop, etc.)
-3. The MCP server connects to Fiji automatically on the first tool call
+The first tool call auto-launches Fiji if it's not already running (requires `FIJI_HOME`). You can also start Fiji manually and go to `Plugins > fiji-mcp > Start Bridge`.
 
 Example conversation:
 
@@ -153,6 +141,7 @@ Example conversation:
 
 | Variable | Default | Description |
 |---|---|---|
+| `FIJI_HOME` | *(auto-discover)* | Path to `Fiji.app` — enables auto-launch and better error messages |
 | `FIJI_MCP_PORT` | `8765` | WebSocket port (set on both Fiji and MCP server side) |
 
 ## Architecture
@@ -186,15 +175,16 @@ Every event is tagged with `"source": "user"` or `"source": "mcp"` so the LLM ca
 # Install dev dependencies
 uv sync --dev
 
-# Run tests (54 unit tests, no Fiji required)
+# Run Python tests (no Fiji required)
 uv run pytest -v
 
 # Run smoke test (requires Fiji with bridge started)
 uv run python tests/smoke_test.py
 
-# Build the Java plugin
-cd fiji-plugin
-JAVA_HOME="../Fiji/java/macos-arm64/zulu21.42.19-ca-jdk21.0.7-macosx_aarch64/zulu-21.jdk/Contents/Home" mvn package -q
+# Build the Java plugin from source (requires Maven + JDK 8+)
+cd fiji-plugin && mvn package -q
+# Copy to package data:
+cp target/fiji-mcp-bridge-0.1.0.jar ../src/fiji_mcp/data/
 ```
 
 ## License

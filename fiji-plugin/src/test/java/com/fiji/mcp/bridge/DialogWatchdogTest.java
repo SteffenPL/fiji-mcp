@@ -210,7 +210,7 @@ class DialogWatchdogTest {
     @Test
     void stopIsIdempotent() {
         DialogWatchdog wd = new DialogWatchdog(
-                () -> List.of(), scheduler, 50, 20);
+                () -> java.util.Collections.emptyList(), scheduler, 50, 20);
         wd.start();
         wd.stop();
         wd.stop();   // must not throw
@@ -220,7 +220,7 @@ class DialogWatchdogTest {
     @Test
     void dismissedReturnsEmptyListIfNeverStarted() {
         DialogWatchdog wd = new DialogWatchdog(
-                () -> List.of(), scheduler, 50, 20);
+                () -> java.util.Collections.emptyList(), scheduler, 50, 20);
         List<DismissedDialog> result = wd.dismissed();
         assertNotNull(result);
         assertEquals(0, result.size());

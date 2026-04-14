@@ -22,27 +22,27 @@ public class RequestHandler {
     }
 
     public JsonObject handle(String action, JsonObject params) {
-        return switch (action) {
-            case "run_ij_macro"          -> scriptExecutor.runMacro(params);
-            case "run_script"            -> scriptExecutor.runScript(params);
-            case "run_command"           -> scriptExecutor.runCommand(params);
-            case "list_commands"         -> scriptExecutor.listCommands(params);
-            case "list_images"           -> imageService.listImages();
-            case "get_image_info"        -> imageService.getImageInfo(params);
-            case "save_image"            -> imageService.saveImage(params);
-            case "get_thumbnail"         -> imageService.getThumbnail(params);
-            case "get_results_table"     -> imageService.getResultsTable(params);
-            case "get_log"               -> imageService.getLog(params);
-            case "status"                -> buildStatus();
-            case "set_event_categories"  -> eventEmitter.setCategories(params);
-            case "wait_for_execution"    -> reporter.waitFor(
+        switch (action) {
+            case "run_ij_macro":          return scriptExecutor.runMacro(params);
+            case "run_script":            return scriptExecutor.runScript(params);
+            case "run_command":           return scriptExecutor.runCommand(params);
+            case "list_commands":         return scriptExecutor.listCommands(params);
+            case "list_images":           return imageService.listImages();
+            case "get_image_info":        return imageService.getImageInfo(params);
+            case "save_image":            return imageService.saveImage(params);
+            case "get_thumbnail":         return imageService.getThumbnail(params);
+            case "get_results_table":     return imageService.getResultsTable(params);
+            case "get_log":               return imageService.getLog(params);
+            case "status":                return buildStatus();
+            case "set_event_categories":  return eventEmitter.setCategories(params);
+            case "wait_for_execution":    return reporter.waitFor(
                     params.get("execution_id").getAsString(),
                     softTimeoutOf(params));
-            case "kill_execution"        -> reporter.kill(
+            case "kill_execution":        return reporter.kill(
                     params.has("execution_id") && !params.get("execution_id").isJsonNull()
                             ? params.get("execution_id").getAsString() : null);
-            default -> throw new IllegalArgumentException("Unknown action: " + action);
-        };
+            default: throw new IllegalArgumentException("Unknown action: " + action);
+        }
     }
 
     private static Integer softTimeoutOf(JsonObject params) {

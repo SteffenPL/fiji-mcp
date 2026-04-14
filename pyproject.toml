@@ -15,7 +15,7 @@ dev = [
 ]
 
 [project.scripts]
-fiji-mcp = "fiji_mcp.server:main"
+fiji-mcp = "fiji_mcp.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -23,6 +23,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fiji_mcp"]
+artifacts = ["src/fiji_mcp/data/*.jar"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

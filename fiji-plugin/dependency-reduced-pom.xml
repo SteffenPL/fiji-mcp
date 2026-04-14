@@ -104,10 +104,10 @@
   <properties>
     <maven.compiler.release>8</maven.compiler.release>
     <maven.compiler.source>1.8</maven.compiler.source>
-    <license.copyrightOwners>N/A</license.copyrightOwners>
+    <license.copyrightOwners>Steffen Plunder</license.copyrightOwners>
     <maven.compiler.target>1.8</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <enforcer.skip>true</enforcer.skip>
-    <license.licenseName>N/A</license.licenseName>
+    <license.licenseName>MIT</license.licenseName>
   </properties>
 </project>

@@ -4,7 +4,8 @@
       "command": "uv",
       "args": ["run", "--directory", ".", "fiji-mcp"],
       "env": {
-        "FIJI_MCP_PORT": "8765"
+        "FIJI_MCP_PORT": "8765",
+        "FIJI_HOME": "./Fiji"
       }
     }
   }

@@ -49,20 +49,47 @@ results_snapshot or get_results_table after measurements to confirm the
 numbers make sense (e.g. plausible cell counts, reasonable area ranges).
 When results look off, investigate before continuing.
 
-## Working with images
-When encountering a new image, first identify what it is: use get_thumbnail
-and get_image_info to understand the content, modality, and dimensions.
-If the image type or context is unclear, ask the user before processing.
-At intermediate steps, share thumbnails and results with the user and ask
-for feedback — e.g. whether a threshold looks right or parameters need
-tuning. Do not run a full pipeline silently.
+## Before you start
+When working with a new image, always begin by confirming context:
+1. Use get_thumbnail + get_image_info to identify the image (modality,
+   channels, bit depth, dimensions).
+2. Ask the user about the biological context if it is not obvious — what
+   organism, what structures, what the analysis goal is.
+3. Briefly propose the steps you plan to take and ask the user whether a
+   web search for related methods or papers would be helpful.
+Only then proceed with processing.
+
+## User feedback
+When a visual check (thumbnail) or measurement leaves you uncertain,
+ask the user before continuing — it is better to confirm at an
+intermediate step than to complete a pipeline with wrong parameters.
+When examining thumbnails as a vision model, formulate specific questions:
+"Are these the nuclei to segment?", "Does this threshold capture the
+structures of interest?", not just "Does this look right?".
 
 ## Example workflows
-- **Measure**: open → inspect image → threshold → verify with thumbnail →
-  Analyze Particles → check results_snapshot → get_thumbnail for overlay
-- **Batch**: open → process → save_image → close, repeat
-- **Segment**: open → inspect → preprocess → Analyze Particles with "add" →
-  get_thumbnail (ROIs baked in)
+- **Cell counting**: open → inspect → convert to 8-bit → Auto Threshold →
+  Watershed → Analyze Particles (size/circularity filters) → check
+  results_snapshot → get_thumbnail to verify overlay
+- **Fluorescence intensity**: open multichannel → inspect channels →
+  Subtract Background (rolling ball) → define or load ROIs → Set
+  Measurements (Mean, IntDen, Area) → Measure → read results
+- **Colocalization**: open multichannel → Split Channels → background
+  subtraction per channel → Coloc 2 (Pearson's, Manders') → report
+- **Z-projection**: open z-stack → Z Project (Max/Sum/Average) → adjust
+  brightness/contrast → save
+- **Tracking**: open time-lapse → TrackMate → select detector → tune
+  threshold → select tracker → filter tracks → export statistics
+- **Batch**: set up macro on one image → Process > Batch > Macro → set
+  input/output folders → run
+- **Comparing methods** (when uncertain which approach fits best): propose
+  2–3 candidate methods, run each on a representative region or image,
+  show thumbnails + results side by side, ask the user to pick before
+  applying to the full dataset
+- **Parameter tuning**: run the same pipeline with several parameter values,
+  combine the results into a single collage or multi-channel stack so the
+  user can compare in one view (avoid opening many separate images), then
+  ask the user to pick the best setting
 """,
 )
 

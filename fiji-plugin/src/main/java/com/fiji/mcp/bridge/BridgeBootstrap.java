@@ -57,7 +57,9 @@ public class BridgeBootstrap {
                 stderrTee,
                 watchdogFactory,
                 lock::acquire,
-                lock::release);
+                lock::release,
+                ImageService::resultsTableRowCount,
+                () -> ImageService.snapshotResultsTable(20, 8));
 
         lock.setCancelHook(() -> reporter.kill(null));
         ScriptExecutor executor = new ScriptExecutor(scriptService, reporter);

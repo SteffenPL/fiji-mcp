@@ -1,5 +1,6 @@
 package com.fiji.mcp.bridge;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -9,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -329,6 +331,44 @@ class ExecutionReporterTest {
         assertTrue(err.get("message").getAsString().contains(firstId));
 
         release.countDown();
+    }
+
+    @Test
+    void runReported_resultsSnapshotIsNullWhenRowCountUnchanged() {
+        JsonObject result = reporter.runReported("macro", null, 60, () -> "ok");
+        assertTrue(result.has("results_snapshot"));
+        assertTrue(result.get("results_snapshot").isJsonNull(),
+                "results_snapshot should be null when table didn't change");
+    }
+
+    @Test
+    void runReported_resultsSnapshotIncludedWhenRowCountChanges() {
+        // Simulate a macro that adds rows to the results table.
+        AtomicInteger rowCount = new AtomicInteger(0);
+        JsonObject fakeSnapshot = new JsonObject();
+        fakeSnapshot.addProperty("total_rows", 5);
+        fakeSnapshot.add("columns", new JsonArray());
+        fakeSnapshot.add("data", new JsonArray());
+
+        ExecutionReporter custom = new ExecutionReporter(
+                () -> "", () -> "test-image.tif", stderrTee,
+                null, () -> {}, () -> {},
+                rowCount::get,
+                () -> fakeSnapshot);
+        try {
+            JsonObject result = custom.runReported("macro", null, 60, () -> {
+                rowCount.set(5);  // simulate Analyze Particles populating the table
+                return null;
+            });
+
+            assertFalse(result.get("results_snapshot").isJsonNull(),
+                    "results_snapshot should be present when table changed");
+            assertEquals(5,
+                    result.getAsJsonObject("results_snapshot")
+                          .get("total_rows").getAsInt());
+        } finally {
+            custom.shutdown();
+        }
     }
 
     @Test

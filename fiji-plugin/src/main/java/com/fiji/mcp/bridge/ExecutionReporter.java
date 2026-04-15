@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 public class ExecutionReporter {
@@ -18,6 +19,8 @@ public class ExecutionReporter {
     private final Supplier<DialogWatchdog> watchdogFactory;
     private final Runnable lockAcquire;
     private final Runnable lockRelease;
+    private final IntSupplier resultsRowCount;
+    private final Supplier<JsonObject> resultsSnapshot;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "fiji-mcp-worker");
         t.setDaemon(true);
@@ -35,9 +38,10 @@ public class ExecutionReporter {
     public ExecutionReporter(Supplier<String> logSnapshot,
                              Supplier<String> activeImageTitle,
                              StderrTeeStream stderrTee) {
-        // Legacy/test shim — no watchdog, no lock.
+        // Legacy/test shim — no watchdog, no lock, no results snapshot.
         this(logSnapshot, activeImageTitle, stderrTee,
-             null, () -> {}, () -> {});
+             null, () -> {}, () -> {},
+             () -> 0, () -> null);
     }
 
     public ExecutionReporter(Supplier<String> logSnapshot,
@@ -46,12 +50,27 @@ public class ExecutionReporter {
                              Supplier<DialogWatchdog> watchdogFactory,
                              Runnable lockAcquire,
                              Runnable lockRelease) {
+        this(logSnapshot, activeImageTitle, stderrTee,
+             watchdogFactory, lockAcquire, lockRelease,
+             () -> 0, () -> null);
+    }
+
+    public ExecutionReporter(Supplier<String> logSnapshot,
+                             Supplier<String> activeImageTitle,
+                             StderrTeeStream stderrTee,
+                             Supplier<DialogWatchdog> watchdogFactory,
+                             Runnable lockAcquire,
+                             Runnable lockRelease,
+                             IntSupplier resultsRowCount,
+                             Supplier<JsonObject> resultsSnapshot) {
         this.logSnapshot = logSnapshot;
         this.activeImageTitle = activeImageTitle;
         this.stderrTee = stderrTee;
         this.watchdogFactory = watchdogFactory;
         this.lockAcquire = lockAcquire;
         this.lockRelease = lockRelease;
+        this.resultsRowCount = resultsRowCount;
+        this.resultsSnapshot = resultsSnapshot;
     }
 
     public JsonObject runReported(String type, Integer softTimeoutSeconds,
@@ -69,6 +88,7 @@ public class ExecutionReporter {
 
         long startMillis = System.currentTimeMillis();
         String stdoutBefore = logSnapshot.get();
+        int resultsRowsBefore = resultsRowCount.getAsInt();
         String execId = "exec-" + counter.incrementAndGet();
         // Worker stashes its captured stderr here in the finally block; the
         // caller thread reads it when building the completed envelope. We can't
@@ -98,7 +118,8 @@ public class ExecutionReporter {
         DialogWatchdog watchdog = watchdogFactory != null ? watchdogFactory.get() : null;
         Future<Object> future = worker.submit(wrapped);
         Slot slot = new Slot(execId, type, future, startMillis, stdoutBefore,
-                             hardTimeoutSeconds, cancelHook, capturedStderr, watchdog);
+                             hardTimeoutSeconds, cancelHook, capturedStderr, watchdog,
+                             resultsRowsBefore);
         slot.hardCancel = scheduler.schedule(
                 () -> internalCancel(slot, CancelReason.HARD_TIMEOUT),
                 hardTimeoutSeconds, TimeUnit.SECONDS);
@@ -227,6 +248,7 @@ public class ExecutionReporter {
         env.add("execution_id", JsonNull.INSTANCE);
         env.addProperty("active_image", activeImageTitle.get());
         addDismissedDialogs(env, slot);
+        addResultsSnapshot(env, slot);
         return env;
     }
 
@@ -311,6 +333,16 @@ public class ExecutionReporter {
         env.add("dismissed_dialogs", new com.google.gson.JsonArray());
     }
 
+    private void addResultsSnapshot(JsonObject env, Slot slot) {
+        int rowsNow = resultsRowCount.getAsInt();
+        if (rowsNow == slot.resultsRowsBefore) {
+            env.add("results_snapshot", JsonNull.INSTANCE);
+            return;
+        }
+        JsonObject snapshot = resultsSnapshot.get();
+        env.add("results_snapshot", snapshot != null ? snapshot : JsonNull.INSTANCE);
+    }
+
     private static final java.util.regex.Pattern IJ_LINE_PATTERN =
             java.util.regex.Pattern.compile("in line (\\d+)");
 
@@ -368,26 +400,28 @@ public class ExecutionReporter {
         final Future<Object> future;
         final long startMillis;
         final String stdoutBefore;
+        final int resultsRowsBefore;
         final int hardTimeoutSeconds;
         final Runnable cancelHook;
         final AtomicReference<String> capturedStderr;
-        final DialogWatchdog watchdog;             // NEW
+        final DialogWatchdog watchdog;
         volatile ScheduledFuture<?> hardCancel;
         volatile CancelReason cancelReason;
 
         Slot(String id, String type, Future<Object> future,
              long startMillis, String stdoutBefore, int hardTimeoutSeconds,
              Runnable cancelHook, AtomicReference<String> capturedStderr,
-             DialogWatchdog watchdog) {                                       // NEW
+             DialogWatchdog watchdog, int resultsRowsBefore) {
             this.id = id;
             this.type = type;
             this.future = future;
             this.startMillis = startMillis;
             this.stdoutBefore = stdoutBefore;
+            this.resultsRowsBefore = resultsRowsBefore;
             this.hardTimeoutSeconds = hardTimeoutSeconds;
             this.cancelHook = cancelHook;
             this.capturedStderr = capturedStderr;
-            this.watchdog = watchdog;             // NEW
+            this.watchdog = watchdog;
         }
     }
 

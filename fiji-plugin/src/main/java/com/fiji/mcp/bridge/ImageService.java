@@ -40,10 +40,7 @@ public class ImageService {
     }
 
     public JsonObject getImageInfo(JsonObject params) {
-        ImagePlus imp = findImage(params);
-        if (imp == null) {
-            throw new RuntimeException("Image not found");
-        }
+        ImagePlus imp = findImageOrThrow(params);
         JsonObject result = new JsonObject();
         result.addProperty("title", imp.getTitle());
         result.addProperty("width", imp.getWidth());
@@ -113,10 +110,7 @@ public class ImageService {
     }
 
     public JsonObject getThumbnail(JsonObject params) {
-        ImagePlus imp = findImage(params);
-        if (imp == null) {
-            throw new RuntimeException("Image not found");
-        }
+        ImagePlus imp = findImageOrThrow(params);
 
         int maxSize = params.has("max_size")
                 ? params.get("max_size").getAsInt() : 800;
@@ -199,14 +193,45 @@ public class ImageService {
         return result;
     }
 
-    private ImagePlus findImage(JsonObject params) {
+    private ImagePlus findImageOrThrow(JsonObject params) {
         if (params.has("title")) {
-            return WindowManager.getImage(params.get("title").getAsString());
+            String title = params.get("title").getAsString();
+            ImagePlus imp = WindowManager.getImage(title);
+            if (imp == null) {
+                throw new RuntimeException(
+                        "Image not found: \"" + title + "\". " + availableTitlesHint());
+            }
+            return imp;
         }
         if (params.has("id")) {
-            return WindowManager.getImage(params.get("id").getAsInt());
+            int id = params.get("id").getAsInt();
+            ImagePlus imp = WindowManager.getImage(id);
+            if (imp == null) {
+                throw new RuntimeException(
+                        "Image not found with id " + id + ". " + availableTitlesHint());
+            }
+            return imp;
         }
-        return WindowManager.getCurrentImage();
+        ImagePlus imp = WindowManager.getCurrentImage();
+        if (imp == null) {
+            throw new RuntimeException("No active image. " + availableTitlesHint());
+        }
+        return imp;
+    }
+
+    private String availableTitlesHint() {
+        int[] ids = WindowManager.getIDList();
+        if (ids == null || ids.length == 0) {
+            return "No images are open.";
+        }
+        StringBuilder sb = new StringBuilder("Open images: [");
+        for (int i = 0; i < ids.length; i++) {
+            ImagePlus img = WindowManager.getImage(ids[i]);
+            if (i > 0) sb.append(", ");
+            sb.append("\"").append(img != null ? img.getTitle() : "?").append("\"");
+        }
+        sb.append("]");
+        return sb.toString();
     }
 
     private String typeName(int type) {

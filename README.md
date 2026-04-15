@@ -123,9 +123,42 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 }
 ```
 
-#### Cursor / Codex
+#### Cursor
 
-Use the same `command`, `args`, and `env` as above in your client's MCP config.
+Use the same `command`, `args`, and `env` as above in Cursor's MCP config.
+
+#### Codex CLI
+
+Add the server with the built-in MCP command:
+
+```bash
+codex mcp add fiji-mcp --env FIJI_HOME=/path/to/Fiji.app -- \
+  uv run --directory /absolute/path/to/fiji-mcp fiji-mcp
+```
+
+Then verify it was added:
+
+```bash
+codex mcp list
+codex mcp get fiji-mcp
+```
+
+Codex stores MCP servers in `~/.codex/config.toml` by default, so you can also add it manually:
+
+```toml
+[mcp_servers.fiji-mcp]
+command = "uv"
+args = ["run", "--directory", "/absolute/path/to/fiji-mcp", "fiji-mcp"]
+
+[mcp_servers.fiji-mcp.env]
+FIJI_HOME = "/path/to/Fiji.app"
+```
+
+#### Codex app
+
+The Codex app uses the same MCP configuration as the Codex CLI. If you already ran `codex mcp add ...`, `fiji-mcp` should appear in the app automatically.
+
+You can also add it from the app via `Settings > Integrations & MCP`, or by editing `~/.codex/config.toml` with the same TOML block shown above.
 
 ## Usage
 

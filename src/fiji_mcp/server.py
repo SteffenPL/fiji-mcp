@@ -16,52 +16,53 @@ from fiji_mcp.install import JAR_NAME
 mcp = FastMCP(
     "fiji-mcp",
     instructions="""\
-Scripting interface to a running Fiji (ImageJ2) instance via WebSocket.
-
-## Starting the bridge
-After running ``fiji-mcp install``, the server auto-launches Fiji with the
-bridge on the first tool call — no manual steps needed. If Fiji is already
-running with the bridge active, the server connects immediately.
-To check: call status. If not connected and auto-launch is unavailable,
-start Fiji manually and run Plugins > fiji-mcp > Start Bridge.
+Scripting interface to a running Fiji (ImageJ2) instance — a bioimage
+analysis platform used for microscopy and scientific imaging. The bridge
+auto-launches Fiji on the first tool call; call status to check connectivity.
 
 ## Core workflow
 Compose scripts with run_ij_macro (ImageJ macro) or run_script (Python/Groovy).
 Images stay in Fiji; use save_image only when the caller needs a file on disk.
-All I/O is file-path-based — no base64 in the protocol.
+Use get_thumbnail regularly to see what you are working with.
+Use list_commands to discover available ImageJ commands by keyword.
 
-## Reading results
-After measurement commands (Analyze Particles, Measure, etc.), call
-get_results_table to read the Results table as inline JSON rows.
-Use list_images to discover open image titles, then get_thumbnail for
-visual inspection.
+## Execution envelope
+run_ij_macro, run_script, and run_command all return:
+  {status, stdout, stderr, value, error, duration_ms, execution_id,
+   active_image, dismissed_dialogs, results_snapshot}
+- status: "completed" or "running" (long-poll via soft_timeout_seconds)
+- value: script return value as string, or null (always null for run_command)
+- error: {message, type, line?} or null — when set, check stderr and
+  dismissed_dialogs to diagnose
+- execution_id: set when status="running", use with wait_for_execution
+- dismissed_dialogs: [{title, text, when_ms}] — modal dialogs auto-closed
+  during execution; may explain missing side-effects
+- results_snapshot: auto-embedded when the Results table changes —
+  {total_rows, columns, data}. Saves a separate get_results_table call.
 
-## Visual feedback
-Use get_thumbnail frequently to see what you are working with.
-Call it after opening images, after processing steps, and before reporting
-results. It returns a display-ready PNG with the current LUT and overlays
-baked in — one call replaces duplicate/resize/enhance/save/close.
-When called with no title or id, it returns the active (frontmost) image.
+## Verify your work
+Every execution returns feedback — use it. Read stdout, stderr, and
+dismissed_dialogs after each step; don't assume success from a lack of
+error. Use get_thumbnail to visually verify processing results — a
+threshold that runs without error can still be wrong. Check
+results_snapshot or get_results_table after measurements to confirm the
+numbers make sense (e.g. plausible cell counts, reasonable area ranges).
+When results look off, investigate before continuing.
 
-## Dismissed dialogs
-Modal dialogs that would block automation are auto-dismissed during macro
-execution. The dismissed_dialogs field in the response envelope lists any
-dialogs that were closed, including their title and message. Check this
-field when a command behaves unexpectedly — a dismissed dialog may explain
-missing side-effects.
+## Working with images
+When encountering a new image, first identify what it is: use get_thumbnail
+and get_image_info to understand the content, modality, and dimensions.
+If the image type or context is unclear, ask the user before processing.
+At intermediate steps, share thumbnails and results with the user and ask
+for feedback — e.g. whether a threshold looks right or parameters need
+tuning. Do not run a full pipeline silently.
 
 ## Example workflows
-- **Measure objects**: open image → threshold → run("Analyze Particles", ...) →
-  get_results_table → get_thumbnail to verify overlay
-- **Batch process**: open → process (filter, threshold, etc.) → save_image →
-  close, repeat
-- **Segment & inspect**: open → preprocessing → run("Analyze Particles", "add") →
-  get_thumbnail (ROIs baked into overlay)
-
-## Timeouts
-Default hard ceiling is 600 s. For known-fast calls, lower it.
-For long operations, pass soft_timeout_seconds to get an execution_id,
-then poll with wait_for_execution or cancel with kill_execution.
+- **Measure**: open → inspect image → threshold → verify with thumbnail →
+  Analyze Particles → check results_snapshot → get_thumbnail for overlay
+- **Batch**: open → process → save_image → close, repeat
+- **Segment**: open → inspect → preprocess → Analyze Particles with "add" →
+  get_thumbnail (ROIs baked in)
 """,
 )
 
@@ -153,12 +154,10 @@ async def run_ij_macro(
 ) -> dict:
     """Run an ImageJ1 macro in Fiji.
 
-    Returns the unified execution envelope. By default the call blocks until
-    the macro completes or the 600-second hard ceiling auto-kills it. Pass
-    soft_timeout_seconds to opt into the long-poll path: the call returns a
-    "running" envelope after that many seconds with an execution_id you can
-    pass to wait_for_execution or kill_execution. Pass a larger
-    hard_timeout_seconds for known-long operations.
+    Returns the execution envelope (see server instructions for shape).
+    Blocks until done or the hard ceiling (default 600 s) fires.
+    Pass soft_timeout_seconds to get a "running" envelope early with an
+    execution_id for wait_for_execution / kill_execution.
     """
     client = await _get_client()
     params: dict = {"code": code, "hard_timeout_seconds": hard_timeout_seconds}
@@ -181,7 +180,7 @@ async def run_script(
 ) -> dict:
     """Run a script in the given scripting language in Fiji.
 
-    Returns the unified execution envelope. See run_ij_macro for the lifecycle.
+    Returns the execution envelope. See run_ij_macro for timeout lifecycle.
     """
     client = await _get_client()
     params: dict = {
@@ -207,8 +206,8 @@ async def run_command(
 ) -> dict:
     """Run a named Fiji/ImageJ command, optionally with arguments.
 
-    Returns the unified execution envelope. value is always null because
-    IJ.run has no return path.
+    Returns the execution envelope. value is always null (IJ.run has no
+    return path).
     """
     client = await _get_client()
     params: dict = {
@@ -231,12 +230,8 @@ async def wait_for_execution(
 ) -> dict:
     """Wait for a previously-started execution to complete.
 
-    Use this when run_ij_macro / run_script / run_command returned a "running"
-    envelope and you want to keep waiting. Returns either a completed envelope
-    or another running envelope (call again to keep waiting). With
-    soft_timeout_seconds == None (default), waits until completion or until the
-    original execution's hard timeout fires. The hard timeout was set on the
-    original call and continues to apply.
+    Returns a completed or still-running execution envelope. Call again
+    if still running. The original hard timeout continues to apply.
     """
     client = await _get_client()
     params: dict = {"execution_id": execution_id}
@@ -256,9 +251,10 @@ async def wait_for_execution(
 async def kill_execution(execution_id: str | None = None) -> dict:
     """Kill a running execution.
 
-    If execution_id is given, kills that specific execution. If omitted, kills
-    whatever is currently active in the single execution slot — useful for
-    unsticking a hung lock when no id is known.
+    If execution_id is omitted, kills whatever is currently active — useful
+    for unsticking a hung lock when no id is known.
+
+    Returns the execution envelope of the killed execution.
     """
     client = await _get_client()
     params: dict = {}
@@ -269,14 +265,20 @@ async def kill_execution(execution_id: str | None = None) -> dict:
 
 @mcp.tool
 async def list_images() -> dict:
-    """List all currently open images in Fiji."""
+    """List all currently open images in Fiji.
+
+    Returns: {images: [{id, title, width, height}]}
+    """
     client = await _get_client()
     return await client.send_request("list_images")
 
 
 @mcp.tool
 async def get_image_info(title: str | None = None, image_id: int | None = None) -> dict:
-    """Get detailed information about an image, identified by title or id."""
+    """Get detailed information about an image, identified by title or id.
+
+    Returns: {title, width, height, depth, channels, frames, type, path?}
+    """
     client = await _get_client()
     params: dict = {}
     if title is not None:
@@ -288,7 +290,10 @@ async def get_image_info(title: str | None = None, image_id: int | None = None) 
 
 @mcp.tool
 async def save_image(title: str, format: str = "tiff", path: str | None = None) -> dict:
-    """Save an open image to disk."""
+    """Save an open image to disk.
+
+    Returns: {path, format}
+    """
     client = await _get_client()
     params: dict = {"title": title, "format": format}
     if path is not None:
@@ -305,9 +310,11 @@ async def get_thumbnail(
 ) -> dict:
     """Get a PNG thumbnail of an image with current display settings applied.
 
-    Returns a file path to a scaled-down PNG snapshot. By default the current
-    LUT, brightness/contrast, overlays, and ROI outlines are baked in
-    (apply_lut=True), so the thumbnail matches what the user sees in Fiji."""
+    LUT, brightness/contrast, overlays, and ROI outlines are baked in by
+    default (apply_lut=True), so the thumbnail matches what the user sees.
+
+    Returns: {path, width, height}
+    """
     client = await _get_client()
     params: dict = {"max_size": max_size, "apply_lut": apply_lut}
     if title is not None:
@@ -319,14 +326,20 @@ async def get_thumbnail(
 
 @mcp.tool
 async def list_commands(pattern: str) -> dict:
-    """List available Fiji commands matching a pattern."""
+    """List available Fiji commands matching a pattern (max 100 results).
+
+    Returns: {commands: [{name, class}], count}
+    """
     client = await _get_client()
     return await client.send_request("list_commands", {"pattern": pattern})
 
 
 @mcp.tool
 async def get_results_table(path: str | None = None) -> dict:
-    """Get the current Results table, optionally saving it to a CSV path."""
+    """Get the current Results table as a CSV file.
+
+    Returns: {path, rows} or {rows: 0, message} if empty.
+    """
     client = await _get_client()
     if path is not None:
         return await client.send_request("get_results_table", {"path": path})
@@ -335,21 +348,30 @@ async def get_results_table(path: str | None = None) -> dict:
 
 @mcp.tool
 async def get_roi_manager() -> dict:
-    """Get the current ROI Manager contents: count, names, types, and bounding boxes."""
+    """Get the current ROI Manager contents.
+
+    Returns: {count, rois: [{index, name, type, bounds: {x, y, width, height}}]}
+    """
     client = await _get_client()
     return await client.send_request("get_roi_manager")
 
 
 @mcp.tool
 async def get_log(count: int = 50) -> dict:
-    """Get recent entries from the Fiji log."""
+    """Get recent entries from the Fiji log.
+
+    Returns: {lines: [str], total}
+    """
     client = await _get_client()
     return await client.send_request("get_log", {"count": count})
 
 
 @mcp.tool
 async def status() -> dict:
-    """Get Fiji status, including version, uptime, and action count."""
+    """Get Fiji bridge status.
+
+    Returns: {connected, fiji_version, uptime_s, action_count, enabled_categories}
+    """
     client = await _get_client()
     result = await client.send_request("status")
     return {**result, "action_count": _action_log.count}
@@ -357,7 +379,10 @@ async def status() -> dict:
 
 @mcp.tool
 async def set_event_categories(categories: list[str]) -> dict:
-    """Set which event categories Fiji should emit."""
+    """Set which event categories Fiji should emit.
+
+    Returns: {categories: [str]}
+    """
     client = await _get_client()
     return await client.send_request("set_event_categories", {"categories": categories})
 
@@ -374,8 +399,9 @@ async def get_recent_actions(
 ) -> dict:
     """Read recent actions from the event log.
 
-    Actions include user interactions and MCP-triggered commands.
-    Use source='user' to see only what the biologist did.
+    Use source='user' to see only what the biologist did manually.
+
+    Returns: {actions: [event], total, returned}
     """
     events, total = _action_log.get_recent(
         count=count, offset=offset, source=source, categories=categories
@@ -392,8 +418,10 @@ async def export_actions_as_macro(
 ) -> dict:
     """Export a slice of the action log as a runnable ImageJ macro.
 
-    Indices are global (0-based). Negative indices count from the end.
-    Only command_finished events produce macro lines.
+    Indices are 0-based; negative counts from end. Only command_finished
+    events produce macro lines.
+
+    Returns: {macro: str, event_count}
     """
     events, _ = _action_log.get_range(
         start=start, end=end, source=source, categories=categories

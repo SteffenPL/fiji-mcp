@@ -419,6 +419,23 @@ async def set_event_categories(categories: list[str]) -> dict:
 
 
 @mcp.tool
+async def get_fiji_info() -> dict:
+    """Get Fiji installation paths.
+
+    To install a plugin, download or copy its .jar file into the plugins_dir
+    and restart Fiji.
+
+    Returns: {fiji_home, plugins_dir, java_version}
+    """
+    info = resolve_fiji_home()
+    return {
+        "fiji_home": str(info.path),
+        "plugins_dir": str(info.plugins_dir),
+        "java_version": info.java_version,
+    }
+
+
+@mcp.tool
 async def get_recent_actions(
     count: int = 20,
     offset: int = 0,
@@ -427,7 +444,12 @@ async def get_recent_actions(
 ) -> dict:
     """Read recent actions from the event log.
 
-    Use source='user' to see only what the biologist did manually.
+    Each event: {category, event, data, source, timestamp}
+    - source: "user" (biologist interacting with Fiji directly) or
+      "mcp" (actions triggered by this agent). Use source='user' to see
+      only what the biologist did.
+    - category: "command", "image", "roi", "tool", "display", "overlay", "log"
+    - event: e.g. "command_finished", "image_opened", "roi_added"
 
     Returns: {actions: [event], total, returned}
     """

@@ -194,6 +194,14 @@ class TestGetResultsTable:
         )
 
 
+class TestGetRoiManager:
+    async def test_no_params(self, mock_client):
+        mock_client.send_request.return_value = {"count": 0, "rois": []}
+        result = await srv.get_roi_manager()
+        mock_client.send_request.assert_called_once_with("get_roi_manager")
+        assert result["count"] == 0
+
+
 class TestGetLog:
     async def test_default_count(self, mock_client):
         await srv.get_log()

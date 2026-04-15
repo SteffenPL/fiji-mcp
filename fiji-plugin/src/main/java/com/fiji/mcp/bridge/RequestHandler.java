@@ -32,6 +32,7 @@ public class RequestHandler {
             case "save_image":            return imageService.saveImage(params);
             case "get_thumbnail":         return imageService.getThumbnail(params);
             case "get_results_table":     return imageService.getResultsTable(params);
+            case "get_roi_manager":       return imageService.getRoiManager();
             case "get_log":               return imageService.getLog(params);
             case "status":                return buildStatus();
             case "set_event_categories":  return eventEmitter.setCategories(params);

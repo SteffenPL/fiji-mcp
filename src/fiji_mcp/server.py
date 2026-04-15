@@ -334,6 +334,13 @@ async def get_results_table(path: str | None = None) -> dict:
 
 
 @mcp.tool
+async def get_roi_manager() -> dict:
+    """Get the current ROI Manager contents: count, names, types, and bounding boxes."""
+    client = await _get_client()
+    return await client.send_request("get_roi_manager")
+
+
+@mcp.tool
 async def get_log(count: int = 50) -> dict:
     """Get recent entries from the Fiji log."""
     client = await _get_client()

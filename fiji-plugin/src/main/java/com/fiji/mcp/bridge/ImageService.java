@@ -5,9 +5,12 @@ import com.google.gson.JsonObject;
 import ij.IJ;
 import ij.ImagePlus;
 import ij.WindowManager;
+import ij.gui.Roi;
 import ij.io.FileSaver;
 import ij.measure.ResultsTable;
+import ij.plugin.frame.RoiManager;
 
+import java.awt.Rectangle;
 import java.io.File;
 
 public class ImageService {
@@ -174,6 +177,89 @@ public class ImageService {
         return result;
     }
 
+    public JsonObject getRoiManager() {
+        RoiManager rm = RoiManager.getInstance();
+        JsonObject result = new JsonObject();
+        if (rm == null || rm.getCount() == 0) {
+            result.addProperty("count", 0);
+            result.add("rois", new JsonArray());
+            return result;
+        }
+
+        Roi[] rois = rm.getRoisAsArray();
+        result.addProperty("count", rois.length);
+        JsonArray arr = new JsonArray();
+        for (int i = 0; i < rois.length; i++) {
+            JsonObject entry = new JsonObject();
+            entry.addProperty("index", i);
+            entry.addProperty("name", rm.getName(Integer.toString(i)));
+            entry.addProperty("type", roiTypeName(rois[i].getType()));
+            Rectangle bounds = rois[i].getBounds();
+            JsonObject b = new JsonObject();
+            b.addProperty("x", bounds.x);
+            b.addProperty("y", bounds.y);
+            b.addProperty("width", bounds.width);
+            b.addProperty("height", bounds.height);
+            entry.add("bounds", b);
+            arr.add(entry);
+        }
+        result.add("rois", arr);
+        return result;
+    }
+
+    /**
+     * Snapshot the first {@code maxRows} rows and {@code maxCols} columns of
+     * the current Results table as a JsonObject with "rows", "columns", and
+     * "data" (array of row-arrays).  Returns null when the table is empty.
+     * Used by ExecutionReporter to embed a results preview in the envelope.
+     */
+    public static JsonObject snapshotResultsTable(int maxRows, int maxCols) {
+        ResultsTable rt = ResultsTable.getResultsTable();
+        if (rt == null || rt.size() == 0) return null;
+
+        String[] allHeadings = rt.getHeadings();
+        int cols = Math.min(allHeadings.length, maxCols);
+        int rows = Math.min(rt.size(), maxRows);
+
+        JsonArray columns = new JsonArray();
+        for (int c = 0; c < cols; c++) columns.add(allHeadings[c]);
+
+        JsonArray data = new JsonArray();
+        for (int r = 0; r < rows; r++) {
+            JsonArray row = new JsonArray();
+            for (int c = 0; c < cols; c++) {
+                String sv = rt.getStringValue(allHeadings[c], r);
+                if (sv != null && !sv.isEmpty()) {
+                    row.add(sv);
+                } else {
+                    row.add(rt.getValueAsDouble(rt.getColumnIndex(allHeadings[c]), r));
+                }
+            }
+            data.add(row);
+        }
+
+        JsonObject snapshot = new JsonObject();
+        snapshot.addProperty("total_rows", rt.size());
+        snapshot.add("columns", columns);
+        snapshot.add("data", data);
+        if (rt.size() > maxRows) {
+            snapshot.addProperty("truncated", true);
+        }
+        if (allHeadings.length > maxCols) {
+            snapshot.addProperty("truncated_columns", true);
+            snapshot.addProperty("total_columns", allHeadings.length);
+        }
+        return snapshot;
+    }
+
+    /**
+     * Returns the current Results table row count (0 if null/empty).
+     */
+    public static int resultsTableRowCount() {
+        ResultsTable rt = ResultsTable.getResultsTable();
+        return rt == null ? 0 : rt.size();
+    }
+
     public JsonObject getLog(JsonObject params) {
         int count = params.has("count") ? params.get("count").getAsInt() : 50;
         String logText = IJ.getLog();
@@ -242,6 +328,23 @@ public class ImageService {
             case ImagePlus.COLOR_256:  return "8-bit color";
             case ImagePlus.COLOR_RGB:  return "RGB";
             default:                   return "unknown";
+        }
+    }
+
+    private String roiTypeName(int type) {
+        switch (type) {
+            case Roi.RECTANGLE:    return "rectangle";
+            case Roi.OVAL:         return "oval";
+            case Roi.POLYGON:      return "polygon";
+            case Roi.FREEROI:      return "freehand";
+            case Roi.TRACED_ROI:   return "traced";
+            case Roi.LINE:         return "line";
+            case Roi.POLYLINE:     return "polyline";
+            case Roi.FREELINE:     return "freeline";
+            case Roi.ANGLE:        return "angle";
+            case Roi.COMPOSITE:    return "composite";
+            case Roi.POINT:        return "point";
+            default:               return "unknown";
         }
     }
 }

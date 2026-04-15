@@ -19,7 +19,7 @@ LLM Agent → (stdio MCP) → Python server → (ws://localhost:8765) → Fiji +
 
 ## Java builds
 
-The Java plugin targets **Java 8** for maximum Fiji compatibility. Fiji is installed at `~/Fiji` and ships with a bundled Zulu JDK 21 at `~/Fiji/java/macos-arm64/zulu21.42.19-ca-jdk21.0.7-macosx_aarch64/zulu-21.jdk/Contents/Home`. `JAVA_HOME` points there automatically in Claude Code sessions via `.claude/settings.local.json`.
+The Java plugin targets **Java 8** for maximum Fiji compatibility. Fiji ships with a bundled JDK; `JAVA_HOME` should point to it (configured via `.claude/settings.local.json`).
 
 ```
 cd fiji-plugin && mvn package -q

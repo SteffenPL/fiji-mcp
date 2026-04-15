@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.IntFunction;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
@@ -20,7 +21,7 @@ public class ExecutionReporter {
     private final Runnable lockAcquire;
     private final Runnable lockRelease;
     private final IntSupplier resultsRowCount;
-    private final Supplier<JsonObject> resultsSnapshot;
+    private final IntFunction<JsonObject> resultsSnapshot;
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "fiji-mcp-worker");
         t.setDaemon(true);
@@ -41,7 +42,7 @@ public class ExecutionReporter {
         // Legacy/test shim — no watchdog, no lock, no results snapshot.
         this(logSnapshot, activeImageTitle, stderrTee,
              null, () -> {}, () -> {},
-             () -> 0, () -> null);
+             () -> 0, startRow -> null);
     }
 
     public ExecutionReporter(Supplier<String> logSnapshot,
@@ -52,7 +53,7 @@ public class ExecutionReporter {
                              Runnable lockRelease) {
         this(logSnapshot, activeImageTitle, stderrTee,
              watchdogFactory, lockAcquire, lockRelease,
-             () -> 0, () -> null);
+             () -> 0, startRow -> null);
     }
 
     public ExecutionReporter(Supplier<String> logSnapshot,
@@ -62,7 +63,7 @@ public class ExecutionReporter {
                              Runnable lockAcquire,
                              Runnable lockRelease,
                              IntSupplier resultsRowCount,
-                             Supplier<JsonObject> resultsSnapshot) {
+                             IntFunction<JsonObject> resultsSnapshot) {
         this.logSnapshot = logSnapshot;
         this.activeImageTitle = activeImageTitle;
         this.stderrTee = stderrTee;
@@ -339,7 +340,7 @@ public class ExecutionReporter {
             env.add("results_snapshot", JsonNull.INSTANCE);
             return;
         }
-        JsonObject snapshot = resultsSnapshot.get();
+        JsonObject snapshot = resultsSnapshot.apply(slot.resultsRowsBefore);
         env.add("results_snapshot", snapshot != null ? snapshot : JsonNull.INSTANCE);
     }
 

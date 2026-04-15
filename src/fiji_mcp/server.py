@@ -26,6 +26,21 @@ Images stay in Fiji; use save_image only when the caller needs a file on disk.
 Use get_thumbnail regularly to see what you are working with.
 Use list_commands to discover available ImageJ commands by keyword.
 
+## ImageJ statefulness
+ImageJ carries global state that silently affects operations:
+- **Selections**: a makeRectangle/makeOval/etc. selection persists on the
+  active image and is inherited by Duplicate, Clear, Fill, Measure, and
+  many other commands. Always call run("Select None") before operations
+  that should apply to the full image (especially Duplicate). After
+  reading ROI measurements, clear the selection to avoid side-effects on
+  the next step.
+- **Results table**: Analyze Particles and Measure append rows to the
+  shared Results table. Call run("Clear Results") before a new
+  measurement pass to start fresh.
+- **Active image**: commands operate on whichever image is frontmost.
+  After opening or duplicating, verify with selectWindow("title") that
+  the intended image is active before processing.
+
 ## Execution envelope
 run_ij_macro, run_script, and run_command all return:
   {status, stdout, stderr, value, error, duration_ms, execution_id,
@@ -37,8 +52,13 @@ run_ij_macro, run_script, and run_command all return:
 - execution_id: set when status="running", use with wait_for_execution
 - dismissed_dialogs: [{title, text, when_ms}] — modal dialogs auto-closed
   during execution; may explain missing side-effects
-- results_snapshot: auto-embedded when the Results table changes —
-  {total_rows, columns, data}. Saves a separate get_results_table call.
+- results_snapshot: auto-embedded when the Results table row count changes
+  during execution — {total_rows, new_rows, columns, data}. Only rows
+  added by the current execution are shown in data[]; prior rows are
+  excluded. Null when the table did not change. The Results table is
+  cumulative (Analyze Particles appends unless "clear" is passed), so
+  run("Clear Results") before a new measurement pass to avoid
+  accumulation from earlier steps.
 
 ## Verify your work
 Every execution returns feedback — use it. Read stdout, stderr, and

@@ -354,7 +354,7 @@ class ExecutionReporterTest {
                 () -> "", () -> "test-image.tif", stderrTee,
                 null, () -> {}, () -> {},
                 rowCount::get,
-                () -> fakeSnapshot);
+                startRow -> fakeSnapshot);
         try {
             JsonObject result = custom.runReported("macro", null, 60, () -> {
                 rowCount.set(5);  // simulate Analyze Particles populating the table

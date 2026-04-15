@@ -214,19 +214,33 @@ public class ImageService {
      * "data" (array of row-arrays).  Returns null when the table is empty.
      * Used by ExecutionReporter to embed a results preview in the envelope.
      */
-    public static JsonObject snapshotResultsTable(int maxRows, int maxCols) {
+    /**
+     * Snapshot the Results table, showing only rows from {@code startRow}
+     * onwards (i.e. the rows added during the current execution).
+     *
+     * @param maxRows  maximum number of rows to include in the preview
+     * @param maxCols  maximum number of columns to include
+     * @param startRow first row to include (0-based); rows before this are
+     *                 from a prior execution and are excluded from data[]
+     */
+    public static JsonObject snapshotResultsTable(int maxRows, int maxCols, int startRow) {
         ResultsTable rt = ResultsTable.getResultsTable();
         if (rt == null || rt.size() == 0) return null;
 
+        int total = rt.size();
+        int effectiveStart = Math.max(0, Math.min(startRow, total));
+        int newRows = total - effectiveStart;
+        if (newRows <= 0) return null;
+
         String[] allHeadings = rt.getHeadings();
         int cols = Math.min(allHeadings.length, maxCols);
-        int rows = Math.min(rt.size(), maxRows);
+        int rows = Math.min(newRows, maxRows);
 
         JsonArray columns = new JsonArray();
         for (int c = 0; c < cols; c++) columns.add(allHeadings[c]);
 
         JsonArray data = new JsonArray();
-        for (int r = 0; r < rows; r++) {
+        for (int r = effectiveStart; r < effectiveStart + rows; r++) {
             JsonArray row = new JsonArray();
             for (int c = 0; c < cols; c++) {
                 String sv = rt.getStringValue(allHeadings[c], r);
@@ -240,10 +254,11 @@ public class ImageService {
         }
 
         JsonObject snapshot = new JsonObject();
-        snapshot.addProperty("total_rows", rt.size());
+        snapshot.addProperty("total_rows", total);
+        snapshot.addProperty("new_rows", newRows);
         snapshot.add("columns", columns);
         snapshot.add("data", data);
-        if (rt.size() > maxRows) {
+        if (newRows > maxRows) {
             snapshot.addProperty("truncated", true);
         }
         if (allHeadings.length > maxCols) {

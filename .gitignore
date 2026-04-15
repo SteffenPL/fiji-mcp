@@ -42,6 +42,9 @@ fiji-plugin/target/
 # Eval results (regenerated each run)
 tests/evals/results/
 
+# Ground-truth eval pipelines (kept private to preserve subagent isolation)
+tests/evals-internal/
+
 # Git worktrees
 .worktrees/
 

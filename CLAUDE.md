@@ -11,8 +11,6 @@ LLM Agent → (stdio MCP) → Python server → (ws://localhost:8765) → Fiji +
 - **Python** (`src/fiji_mcp/`): fastmcp server, WebSocket client, event buffer
 - **Java** (`fiji-plugin/`): Fiji plugin, WebSocket server, script executor, event emitter
 
-Design spec: `docs/specs/2026-04-09-fiji-mcp-design.md` (private)
-
 ## Design principles
 
 - Scripting-first: LLM composes via `run_ij_macro` / `run_script` / `run_command`, no curated wrappers
@@ -71,8 +69,6 @@ Key conventions:
 - **Subagent isolation**: each task is spawned as an independent Agent so it can't see other tasks or reference algorithms.
 - **File-based checking**: `check.py` scores actual output artifacts (masks, tables) rather than parsing LLM prose.
 - **Shared bridge**: the same running Fiji instance generates ground truth and runs subagent tasks.
-
-Design spec: `docs/specs/2026-04-13-eval-harness-design.md` (private)
 
 ## Bug tracking
 

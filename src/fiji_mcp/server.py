@@ -313,7 +313,8 @@ async def get_thumbnail(
     LUT, brightness/contrast, overlays, and ROI outlines are baked in by
     default (apply_lut=True), so the thumbnail matches what the user sees.
 
-    Returns: {path, width, height}
+    Returns: {path, width, height, is_inverted}
+    is_inverted indicates the LUT is inverted (bright = background).
     """
     client = await _get_client()
     params: dict = {"max_size": max_size, "apply_lut": apply_lut}

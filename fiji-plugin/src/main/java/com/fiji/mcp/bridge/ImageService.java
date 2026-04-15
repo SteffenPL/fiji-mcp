@@ -145,6 +145,7 @@ public class ImageService {
         result.addProperty("path", path);
         result.addProperty("width", snapshot.getProcessor().getWidth());
         result.addProperty("height", snapshot.getProcessor().getHeight());
+        result.addProperty("is_inverted", imp.isInvertedLut());
         return result;
     }
 

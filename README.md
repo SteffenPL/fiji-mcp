@@ -123,13 +123,9 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 }
 ```
 
-#### Cursor
-
-Use the same `command`, `args`, and `env` as above in Cursor's MCP config.
-
 #### Codex CLI
 
-Add the server with the built-in MCP command:
+Add the server globally with the built-in MCP command:
 
 ```bash
 codex mcp add fiji-mcp --env FIJI_HOME=/path/to/Fiji.app -- \
@@ -143,7 +139,7 @@ codex mcp list
 codex mcp get fiji-mcp
 ```
 
-Codex stores MCP servers in `~/.codex/config.toml` by default, so you can also add it manually:
+Codex stores user-level MCP servers in `~/.codex/config.toml`, so you can also add it manually:
 
 ```toml
 [mcp_servers.fiji-mcp]
@@ -154,11 +150,21 @@ args = ["run", "--directory", "/absolute/path/to/fiji-mcp", "fiji-mcp"]
 FIJI_HOME = "/path/to/Fiji.app"
 ```
 
+To install it only for one project, create `.codex/config.toml` in that repo and add the same block there instead. Project-scoped Codex config only applies in trusted projects.
+
 #### Codex app
 
 The Codex app uses the same MCP configuration as the Codex CLI. If you already ran `codex mcp add ...`, `fiji-mcp` should appear in the app automatically.
 
-You can also add it from the app via `Settings > Integrations & MCP`, or by editing `~/.codex/config.toml` with the same TOML block shown above.
+The simplest verified setup paths are:
+
+- Add it in the app via `Settings > Integrations & MCP`
+- Run `codex mcp add ...` once in a terminal
+- Edit `~/.codex/config.toml` for a user-wide install, or `.codex/config.toml` for a per-project install
+
+I have not documented a prompt-only install flow here because I could not verify an official Codex docs path for "install this MCP from chat".
+
+`FIJI_HOME` is not Codex-specific. It is an environment variable read by `fiji-mcp`, and Codex just passes it through when launching the MCP server. If Fiji is in a standard location, you can often omit it and let `fiji-mcp` auto-discover Fiji.
 
 ## Usage
 

@@ -8,7 +8,7 @@ import sys
 from importlib import resources
 from pathlib import Path
 
-from fiji_mcp.fiji_home import FijiInfo, FijiNotFoundError, resolve_fiji_home
+from fiji_mcp.fiji_home import FijiInfo, FijiNotFoundError, resolve_fiji_home, save_fiji_path
 
 JAR_NAME = "fiji-mcp-bridge-0.1.0.jar"
 
@@ -62,6 +62,10 @@ def run(argv: list[str] | None = None) -> None:
         print(f"Installing plugin to: {dest}")
 
     shutil.copy2(str(jar_source), str(dest))
+
+    # 4. Save resolved Fiji path for runtime
+    save_fiji_path(info.path)
+    print(f"Fiji path saved to .fiji-path (used at runtime)")
     print("Done.")
 
 

@@ -31,13 +31,13 @@ Note: the Jaunch launcher's `--run` flag has known issues (fiji/fiji#416).
 ## Configuration
 
 - Port: `8765` (override via `FIJI_MCP_PORT`, read by both Python and Java)
-- `FIJI_HOME`: path to `Fiji.app` — enables auto-launch and plugin install
+- Fiji path: saved to `.fiji-path` by `fiji-mcp install`, overridable via `--fiji-home` CLI arg or `FIJI_HOME` env (fallback)
 - Default execution hard ceiling: 600s (configurable per call via `hard_timeout_seconds`); opt-in long-poll via `soft_timeout_seconds` plus `wait_for_execution` and `kill_execution`
 - WebSocket connect timeout: 5s
 
 ## Launching Fiji
 
-The MCP server auto-launches Fiji when `FIJI_HOME` is set and the bridge plugin is installed. On first tool call, if the bridge WebSocket is not reachable, the server launches `<FIJI_HOME>/fiji -eval 'run("Start Bridge");'` and polls for readiness.
+The MCP server auto-launches Fiji when the Fiji path is known (from `.fiji-path`, `--fiji-home`, or `FIJI_HOME`) and the bridge plugin is installed. On first tool call, if the bridge WebSocket is not reachable, the server launches `<fiji>/fiji -eval 'run("Start Bridge");'` and polls for readiness.
 
 ## Eval harness
 

@@ -10,6 +10,9 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+# Saved path file, written by ``fiji-mcp install``, read at runtime.
+_SAVED_PATH_FILE = Path(__file__).resolve().parent.parent.parent / ".fiji-path"
+
 
 @dataclass
 class FijiInfo:
@@ -22,13 +25,17 @@ class FijiInfo:
 def resolve_fiji_home(explicit: str | None = None) -> FijiInfo:
     """Resolve and validate a Fiji installation.
 
-    Priority: *explicit* arg  →  ``FIJI_HOME`` env  →  auto-discovery.
+    Priority: *explicit* arg  →  saved ``.fiji-path``  →  ``FIJI_HOME`` env
+    →  auto-discovery.
     Raises ``FijiNotFoundError`` if nothing works.
     """
     candidates: list[Path] = []
 
     if explicit:
         candidates.append(Path(explicit))
+    saved = load_fiji_path()
+    if saved:
+        candidates.append(saved)
     env = os.environ.get("FIJI_HOME")
     if env:
         candidates.append(Path(env))
@@ -44,13 +51,25 @@ def resolve_fiji_home(explicit: str | None = None) -> FijiInfo:
     raise FijiNotFoundError(
         "Could not find a valid Fiji installation.\n"
         f"  Searched: {tried}\n"
-        "  Set FIJI_HOME in your MCP config's env section, e.g.\n"
-        '    "env": { "FIJI_HOME": "/path/to/Fiji.app" }'
+        "  Run: uv run fiji-mcp install --fiji-home /path/to/Fiji.app"
     )
 
 
 class FijiNotFoundError(Exception):
     pass
+
+
+def save_fiji_path(path: Path) -> None:
+    """Persist a resolved Fiji path to ``.fiji-path`` for future sessions."""
+    _SAVED_PATH_FILE.write_text(str(path) + "\n")
+
+
+def load_fiji_path() -> Path | None:
+    """Read the saved Fiji path, or return None if not set."""
+    if not _SAVED_PATH_FILE.is_file():
+        return None
+    text = _SAVED_PATH_FILE.read_text().strip()
+    return Path(text) if text else None
 
 
 # ── internal helpers ──────────────────────────────────────────────

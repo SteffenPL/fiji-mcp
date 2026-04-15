@@ -77,98 +77,77 @@ uv run fiji-mcp install
 uv run fiji-mcp install --fiji-home /path/to/Fiji.app
 ```
 
-This copies the bridge plugin JAR into your Fiji's `plugins/` directory and checks the bundled Java version. No Maven or JDK needed.
+This copies the bridge plugin JAR into your Fiji's `plugins/` directory, checks the bundled Java version, and **saves the Fiji path** so the MCP server can find it at runtime. No Maven or JDK needed.
 
 ### 3. Configure your MCP client
 
-Add fiji-mcp to your MCP client. Set `FIJI_HOME` so the server can auto-launch Fiji when needed (optional if Fiji is in a standard location).
+Add `fiji-mcp` to your MCP client. No `FIJI_HOME` env var needed — the install step already saved the path.
 
 #### Claude Code
 
-```bash
-claude mcp add fiji-mcp -- uv run --directory /absolute/path/to/fiji-mcp fiji-mcp
-```
-
-Or add a `.mcp.json` file to your project root:
-
-```json
-{
-  "mcpServers": {
-    "fiji-mcp": {
-      "command": "uv",
-      "args": ["run", "--directory", "/absolute/path/to/fiji-mcp", "fiji-mcp"],
-      "env": {
-        "FIJI_HOME": "/path/to/Fiji.app"
-      }
-    }
-  }
-}
-```
-
-#### Claude Desktop
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
-
-```json
-{
-  "mcpServers": {
-    "fiji-mcp": {
-      "command": "uv",
-      "args": ["run", "--directory", "/absolute/path/to/fiji-mcp", "fiji-mcp"],
-      "env": {
-        "FIJI_HOME": "/path/to/Fiji.app"
-      }
-    }
-  }
-}
-```
-
-#### Codex CLI
-
-Add the server globally with the built-in MCP command:
+Project scope (run from your project root):
 
 ```bash
-codex mcp add fiji-mcp --env FIJI_HOME=/path/to/Fiji.app -- \
+claude mcp add --scope project fiji-mcp -- \
   uv run --directory /absolute/path/to/fiji-mcp fiji-mcp
 ```
 
-Then verify it was added:
+Global scope:
 
 ```bash
-codex mcp list
-codex mcp get fiji-mcp
+claude mcp add --scope user fiji-mcp -- \
+  uv run --directory /absolute/path/to/fiji-mcp fiji-mcp
 ```
 
-Codex stores user-level MCP servers in `~/.codex/config.toml`, so you can also add it manually:
+#### Codex CLI / Codex app
+
+In the Codex app, use the `Show Terminal` button and run the same commands below.
+
+Global scope:
+
+```bash
+codex mcp add fiji-mcp -- \
+  uv run --directory /absolute/path/to/fiji-mcp fiji-mcp
+```
+
+For project scope, use a local `.codex/config.toml` file as shown below.
+
+### Optional: config files
+
+#### Claude config
+
+```json
+{
+  "mcpServers": {
+    "fiji-mcp": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/fiji-mcp", "fiji-mcp"]
+    }
+  }
+}
+```
+
+Use this JSON either in a project `.mcp.json` for Claude Code, or in Claude Desktop's config file at `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows).
+
+#### Codex project or global config
 
 ```toml
 [mcp_servers.fiji-mcp]
 command = "uv"
 args = ["run", "--directory", "/absolute/path/to/fiji-mcp", "fiji-mcp"]
-
-[mcp_servers.fiji-mcp.env]
-FIJI_HOME = "/path/to/Fiji.app"
 ```
 
-To install it only for one project, create `.codex/config.toml` in that repo and add the same block there instead. Project-scoped Codex config only applies in trusted projects.
+Use this block in `.codex/config.toml` for a project-only install, or in `~/.codex/config.toml` for a global install.
 
-#### Codex app
+To override the saved Fiji path at runtime, pass `--fiji-home`:
 
-The Codex app uses the same MCP configuration as the Codex CLI. If you already ran `codex mcp add ...`, `fiji-mcp` should appear in the app automatically.
-
-The simplest verified setup paths are:
-
-- Add it in the app via `Settings > Integrations & MCP`
-- Run `codex mcp add ...` once in a terminal
-- Edit `~/.codex/config.toml` for a user-wide install, or `.codex/config.toml` for a per-project install
-
-I have not documented a prompt-only install flow here because I could not verify an official Codex docs path for "install this MCP from chat".
-
-`FIJI_HOME` is not Codex-specific. It is an environment variable read by `fiji-mcp`, and Codex just passes it through when launching the MCP server. If Fiji is in a standard location, you can often omit it and let `fiji-mcp` auto-discover Fiji.
+```bash
+uv run --directory /absolute/path/to/fiji-mcp fiji-mcp --fiji-home /other/Fiji.app
+```
 
 ## Usage
 
-The first tool call auto-launches Fiji if it's not already running (requires `FIJI_HOME`). You can also start Fiji manually and go to `Plugins > fiji-mcp > Start Bridge`.
+The first tool call auto-launches Fiji if it's not already running. You can also start Fiji manually and go to `Plugins > fiji-mcp > Start Bridge`.
 
 Example conversation:
 
@@ -178,10 +157,12 @@ Example conversation:
 
 ### Configuration
 
-| Variable | Default | Description |
+| Setting | Default | Description |
 |---|---|---|
-| `FIJI_HOME` | *(auto-discover)* | Path to `Fiji.app` — enables auto-launch and better error messages |
-| `FIJI_MCP_PORT` | `8765` | WebSocket port (set on both Fiji and MCP server side) |
+| `.fiji-path` file | *(written by install)* | Saved Fiji path — set automatically by `fiji-mcp install` |
+| `--fiji-home` flag | — | Override saved path at runtime: `fiji-mcp --fiji-home /path` |
+| `FIJI_HOME` env | *(auto-discover)* | Fallback if `.fiji-path` is not set |
+| `FIJI_MCP_PORT` env | `8765` | WebSocket port (set on both Fiji and MCP server side) |
 
 ## Architecture
 

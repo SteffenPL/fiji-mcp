@@ -19,9 +19,9 @@ mcp = FastMCP(
 Scripting interface to a running Fiji (ImageJ2) instance via WebSocket.
 
 ## Starting the bridge
-If FIJI_HOME is set, the server auto-launches Fiji with the bridge on the
-first tool call — no manual steps needed. If Fiji is already running with
-the bridge active, the server connects immediately.
+After running ``fiji-mcp install``, the server auto-launches Fiji with the
+bridge on the first tool call — no manual steps needed. If Fiji is already
+running with the bridge active, the server connects immediately.
 To check: call status. If not connected and auto-launch is unavailable,
 start Fiji manually and run Plugins > fiji-mcp > Start Bridge.
 
@@ -71,9 +71,8 @@ async def _get_client() -> FijiClient:
         info = resolve_fiji_home()
     except FijiNotFoundError:
         raise ConnectionError(
-            "Fiji bridge is not running and no Fiji installation was found. "
-            "Set FIJI_HOME in your MCP config env section, e.g.\n"
-            '  "env": { "FIJI_HOME": "/path/to/Fiji.app" }'
+            "Fiji bridge is not running and no Fiji installation was found.\n"
+            "Run: uv run fiji-mcp install --fiji-home /path/to/Fiji.app"
         )
 
     # Check plugin is installed

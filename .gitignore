@@ -1,5 +1,8 @@
 # Fiji installation (top-level only)
 /Fiji/
+
+# Saved Fiji path (written by fiji-mcp install)
+.fiji-path
                                                                                                                                     
 __pycache__/                                                                                                                          
 *.py[cod]                                                                                                                             

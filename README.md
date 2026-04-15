@@ -77,12 +77,11 @@ uv run fiji-mcp install
 uv run fiji-mcp install --fiji-home /path/to/Fiji.app
 ```
 
-This copies the bridge plugin JAR into your Fiji's `plugins/` directory, checks the bundled Java version, and **saves the Fiji path** so the MCP server can find it at runtime. No Maven or JDK needed.
+This copies the bridge plugin JAR into your Fiji's `plugins/` directory, checks the bundled Java version, and **saves the Fiji path** so the MCP server can find it at runtime.
 
 ### 3. Configure your MCP client
 
-Add `fiji-mcp` to your MCP client. No `FIJI_HOME` env var needed — the install step already saved the path.
-
+Add `fiji-mcp` to your MCP client. 
 #### Claude Code
 
 Project scope (run from your project root):

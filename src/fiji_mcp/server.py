@@ -30,11 +30,33 @@ Compose scripts with run_ij_macro (ImageJ macro) or run_script (Python/Groovy).
 Images stay in Fiji; use save_image only when the caller needs a file on disk.
 All I/O is file-path-based — no base64 in the protocol.
 
+## Reading results
+After measurement commands (Analyze Particles, Measure, etc.), call
+get_results_table to read the Results table as inline JSON rows.
+Use list_images to discover open image titles, then get_thumbnail for
+visual inspection.
+
 ## Visual feedback
 Use get_thumbnail frequently to see what you are working with.
 Call it after opening images, after processing steps, and before reporting
 results. It returns a display-ready PNG with the current LUT and overlays
 baked in — one call replaces duplicate/resize/enhance/save/close.
+When called with no title or id, it returns the active (frontmost) image.
+
+## Dismissed dialogs
+Modal dialogs that would block automation are auto-dismissed during macro
+execution. The dismissed_dialogs field in the response envelope lists any
+dialogs that were closed, including their title and message. Check this
+field when a command behaves unexpectedly — a dismissed dialog may explain
+missing side-effects.
+
+## Example workflows
+- **Measure objects**: open image → threshold → run("Analyze Particles", ...) →
+  get_results_table → get_thumbnail to verify overlay
+- **Batch process**: open → process (filter, threshold, etc.) → save_image →
+  close, repeat
+- **Segment & inspect**: open → preprocessing → run("Analyze Particles", "add") →
+  get_thumbnail (ROIs baked into overlay)
 
 ## Timeouts
 Default hard ceiling is 600 s. For known-fast calls, lower it.

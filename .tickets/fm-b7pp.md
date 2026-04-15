@@ -2,7 +2,7 @@
 id: fm-b7pp
 status: open
 deps: []
-links: [fm-e6fk]
+links: [fm-e6fk, fm-61gs, fm-ma8h]
 created: 2026-04-11T23:27:10Z
 type: feature
 priority: 2

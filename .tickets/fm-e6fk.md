@@ -2,10 +2,10 @@
 id: fm-e6fk
 status: open
 deps: []
-links: [fm-b7pp]
+links: [fm-b7pp, fm-61gs]
 created: 2026-04-11T23:19:40Z
 type: feature
-priority: 2
+priority: 1
 assignee: SteffenPL
 external-ref: feedback-1
 tags: [feedback, bridge, return-path]

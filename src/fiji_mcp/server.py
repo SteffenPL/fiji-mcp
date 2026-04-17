@@ -20,26 +20,35 @@ Scripting interface to a running Fiji (ImageJ2) instance — a bioimage
 analysis platform used for microscopy and scientific imaging. The bridge
 auto-launches Fiji on the first tool call; call status to check connectivity.
 
-## Core workflow
-Compose scripts with run_ij_macro (ImageJ macro) or run_script (Python/Groovy).
-Images stay in Fiji; use save_image only when the caller needs a file on disk.
-Use get_thumbnail regularly to see what you are working with.
-Use list_commands to discover available ImageJ commands by keyword.
+Compose work with run_ij_macro, run_script (Python/Groovy), or run_command.
+Images live in Fiji; save_image only when a file on disk is needed.
+list_commands discovers available ImageJ commands by keyword.
+
+## Tips
+- Use get_thumbnail and get_image_info early to see what you are working
+  with (modality, channels, bit depth) before designing a pipeline.
+- For multi-step processing, briefly outline the planned pipeline and let
+  the user confirm before running it.
+- Web search is fair game for state-of-the-art methods or paper references
+  when unsure which approach fits.
+- If a plugin would help, get_fiji_info returns the plugins_dir; drop the
+  .jar there and restart Fiji.
+- The user is likely interacting with Fiji at the same time. When state
+  looks unexpected (wrong active image, stray ROI, surprising results),
+  get_recent_actions(source="user") shows what they did.
 
 ## ImageJ statefulness
 ImageJ carries global state that silently affects operations:
 - **Selections**: a makeRectangle/makeOval/etc. selection persists on the
   active image and is inherited by Duplicate, Clear, Fill, Measure, and
-  many other commands. Always call run("Select None") before operations
-  that should apply to the full image (especially Duplicate). After
-  reading ROI measurements, clear the selection to avoid side-effects on
-  the next step.
+  many other commands. Call run("Select None") before operations that
+  should apply to the full image.
 - **Results table**: Analyze Particles and Measure append rows to the
   shared Results table. Call run("Clear Results") before a new
   measurement pass to start fresh.
 - **Active image**: commands operate on whichever image is frontmost.
-  After opening or duplicating, verify with selectWindow("title") that
-  the intended image is active before processing.
+  Because the user may also be clicking around, start scripts with
+  selectWindow("title") to lock focus to the intended image.
 
 ## Execution envelope
 run_ij_macro, run_script, and run_command all return:
@@ -54,62 +63,8 @@ run_ij_macro, run_script, and run_command all return:
   during execution; may explain missing side-effects
 - results_snapshot: auto-embedded when the Results table row count changes
   during execution — {total_rows, new_rows, columns, data}. Only rows
-  added by the current execution are shown in data[]; prior rows are
-  excluded. Null when the table did not change. The Results table is
-  cumulative (Analyze Particles appends unless "clear" is passed), so
-  run("Clear Results") before a new measurement pass to avoid
-  accumulation from earlier steps.
-
-## Verify your work
-Every execution returns feedback — use it. Read stdout, stderr, and
-dismissed_dialogs after each step; don't assume success from a lack of
-error. Use get_thumbnail to visually verify processing results — a
-threshold that runs without error can still be wrong. Check
-results_snapshot or get_results_table after measurements to confirm the
-numbers make sense (e.g. plausible cell counts, reasonable area ranges).
-When results look off, investigate before continuing.
-
-## Before you start
-When working with a new image, always begin by confirming context:
-1. Use get_thumbnail + get_image_info to identify the image (modality,
-   channels, bit depth, dimensions).
-2. Ask the user about the biological context if it is not obvious — what
-   organism, what structures, what the analysis goal is.
-3. Briefly propose the steps you plan to take and ask the user whether a
-   web search for related methods or papers would be helpful.
-Only then proceed with processing.
-
-## User feedback
-When a visual check (thumbnail) or measurement leaves you uncertain,
-ask the user before continuing — it is better to confirm at an
-intermediate step than to complete a pipeline with wrong parameters.
-When examining thumbnails as a vision model, formulate specific questions:
-"Are these the nuclei to segment?", "Does this threshold capture the
-structures of interest?", not just "Does this look right?".
-
-## Example workflows
-- **Cell counting**: open → inspect → convert to 8-bit → Auto Threshold →
-  Watershed → Analyze Particles (size/circularity filters) → check
-  results_snapshot → get_thumbnail to verify overlay
-- **Fluorescence intensity**: open multichannel → inspect channels →
-  Subtract Background (rolling ball) → define or load ROIs → Set
-  Measurements (Mean, IntDen, Area) → Measure → read results
-- **Colocalization**: open multichannel → Split Channels → background
-  subtraction per channel → Coloc 2 (Pearson's, Manders') → report
-- **Z-projection**: open z-stack → Z Project (Max/Sum/Average) → adjust
-  brightness/contrast → save
-- **Tracking**: open time-lapse → TrackMate → select detector → tune
-  threshold → select tracker → filter tracks → export statistics
-- **Batch**: set up macro on one image → Process > Batch > Macro → set
-  input/output folders → run
-- **Comparing methods** (when uncertain which approach fits best): propose
-  2–3 candidate methods, run each on a representative region or image,
-  show thumbnails + results side by side, ask the user to pick before
-  applying to the full dataset
-- **Parameter tuning**: run the same pipeline with several parameter values,
-  combine the results into a single collage or multi-channel stack so the
-  user can compare in one view (avoid opening many separate images), then
-  ask the user to pick the best setting
+  added by the current execution are shown in data[]; null when the table
+  did not change.
 """,
 )
 

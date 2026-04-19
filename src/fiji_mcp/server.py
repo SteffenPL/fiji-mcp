@@ -597,6 +597,26 @@ def _register_trace_only_tools() -> None:
         record = _trace_logger.add_annotation(message, label=label)
         return {"status": "ok", "record": record}
 
+    @mcp.tool
+    async def set_trace_metadata(key: str, value: str) -> dict:
+        """Store a structured key-value fact in the active trace.
+
+        Use for machine-readable data that downstream tools should parse
+        reliably — session IDs, parameter choices, metric values, etc.
+        Each call writes one ``{"type": "metadata", "data": {key: value}}``
+        record to ``events.jsonl``.
+
+        Examples:
+            set_trace_metadata("session_uuid", "6dfefadf...")
+            set_trace_metadata("threshold_method", "Otsu")
+            set_trace_metadata("cell_count", "42")
+
+        Returns: {status, record}
+        """
+        assert _trace_logger is not None
+        record = _trace_logger.add_metadata(key, value)
+        return {"status": "ok", "record": record}
+
 
 def main():
     global _trace_logger

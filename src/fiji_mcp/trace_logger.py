@@ -151,6 +151,22 @@ class TraceLogger:
             f.write(json.dumps(record) + "\n")
         return record
 
+    def add_metadata(self, key: str, value: str) -> dict:
+        """Append a structured key-value fact to ``events.jsonl``.
+
+        Written as ``type="metadata"`` with ``data={key: value}`` so
+        downstream parsers can extract it without string matching.
+        """
+        record: dict = {
+            "type": "metadata",
+            "source": "agent",
+            "data": {key: value},
+            "timestamp": _iso_utc_ms(),
+        }
+        with open(self._events_path, "a") as f:
+            f.write(json.dumps(record) + "\n")
+        return record
+
     # ── event stream (synchronous — called from the WS receive loop) ──
 
     def log_event(self, event: dict) -> None:

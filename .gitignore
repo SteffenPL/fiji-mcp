@@ -45,6 +45,9 @@ fiji-plugin/target/
 # Eval results (regenerated each run)
 tests/evals/results/
 
+# Session traces (ephemeral, written by --save-trace)
+traces/
+
 # Ground-truth eval pipelines (kept private to preserve subagent isolation)
 tests/evals-internal/
 

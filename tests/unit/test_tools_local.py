@@ -1,6 +1,10 @@
+from pathlib import Path
+from unittest.mock import AsyncMock
+
 import pytest
 
 import fiji_mcp.server as srv
+from fiji_mcp.fiji_home import FijiInfo
 
 
 def _evt(category="command", event="command_finished", source="user", **data):
@@ -71,6 +75,57 @@ class TestExportActionsAsMacro:
     async def test_empty_range(self):
         result = await srv.export_actions_as_macro(start=0, end=0)
         assert "No command events" in result["macro"]
+
+
+class TestGetFijiInfo:
+    @pytest.fixture(autouse=True)
+    def fake_fiji_home(self, monkeypatch):
+        info = FijiInfo(
+            path=Path("/fake/Fiji.app"),
+            plugins_dir=Path("/fake/Fiji.app/plugins"),
+            launcher=Path("/fake/Fiji.app/fiji"),
+            java_version="21.0.7",
+        )
+        monkeypatch.setattr(srv, "resolve_fiji_home", lambda: info)
+        monkeypatch.setattr(srv, "_client", None)
+
+    async def test_paths_only_when_bridge_not_connected(self):
+        result = await srv.get_fiji_info()
+        assert result["fiji_home"] == "/fake/Fiji.app"
+        assert result["plugins_dir"] == "/fake/Fiji.app/plugins"
+        assert result["java_version"] == "21.0.7"
+        assert "plugin_packages" not in result
+        assert "plugin_packages_error" not in result
+
+    async def test_merges_plugin_packages_when_connected(self, monkeypatch):
+        client = AsyncMock()
+        client.connected = True
+        client.send_request = AsyncMock(return_value={
+            "packages": [
+                {"prefix": "inra.ijpb", "command_count": 12,
+                 "example_commands": ["Classic Watershed"]},
+                {"prefix": "sc.fiji.trackmate", "command_count": 3,
+                 "example_commands": ["TrackMate"]},
+            ],
+        })
+        monkeypatch.setattr(srv, "_client", client)
+
+        result = await srv.get_fiji_info()
+        client.send_request.assert_called_once_with(
+            "list_plugin_packages", timeout=10.0
+        )
+        assert result["plugin_packages"][0]["prefix"] == "inra.ijpb"
+        assert len(result["plugin_packages"]) == 2
+
+    async def test_reports_error_when_bridge_query_fails(self, monkeypatch):
+        client = AsyncMock()
+        client.connected = True
+        client.send_request = AsyncMock(side_effect=RuntimeError("boom"))
+        monkeypatch.setattr(srv, "_client", client)
+
+        result = await srv.get_fiji_info()
+        assert result["plugin_packages_error"] == "boom"
+        assert "plugin_packages" not in result
 
 
 class TestEventsToMacro:

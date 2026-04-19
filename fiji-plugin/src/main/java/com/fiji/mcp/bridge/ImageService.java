@@ -39,6 +39,10 @@ public class ImageService {
         }
         JsonObject result = new JsonObject();
         result.add("images", images);
+        ImagePlus activeImp = WindowManager.getCurrentImage();
+        if (activeImp != null) {
+            result.addProperty("active", activeImp.getTitle());
+        }
         return result;
     }
 

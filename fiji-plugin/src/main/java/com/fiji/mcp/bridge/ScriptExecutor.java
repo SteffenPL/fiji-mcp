@@ -9,8 +9,16 @@ import org.scijava.script.ScriptService;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Hashtable;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -111,6 +119,84 @@ public class ScriptExecutor {
         result.add("commands", matches);
         result.addProperty("count", count);
         return result;
+    }
+
+    // TLD-style leading segments: for these, group by first 3 segments
+    // (e.g. "sc.fiji.trackmate"); for everything else, group by first 2
+    // (e.g. "inra.ijpb"). Matches the convention in the feedback ticket.
+    private static final Set<String> TLD_LIKE_ROOTS = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList(
+                    "sc", "de", "net", "com", "org", "edu", "io", "gov",
+                    "uk", "fr", "jp", "at", "it", "ch", "us", "ca", "nl", "au")));
+
+    public JsonObject listPluginPackages() {
+        Hashtable<String, String> commands = Menus.getCommands();
+        Map<String, List<String>> byPrefix = new TreeMap<>();
+        for (Map.Entry<String, String> entry : commands.entrySet()) {
+            String prefix = packagePrefix(entry.getValue());
+            if (prefix == null) continue;
+            List<String> bucket = byPrefix.get(prefix);
+            if (bucket == null) {
+                bucket = new ArrayList<>();
+                byPrefix.put(prefix, bucket);
+            }
+            bucket.add(entry.getKey());
+        }
+
+        List<Map.Entry<String, List<String>>> sorted =
+                new ArrayList<>(byPrefix.entrySet());
+        sorted.sort(new Comparator<Map.Entry<String, List<String>>>() {
+            @Override
+            public int compare(Map.Entry<String, List<String>> a,
+                               Map.Entry<String, List<String>> b) {
+                int cmp = Integer.compare(b.getValue().size(), a.getValue().size());
+                return cmp != 0 ? cmp : a.getKey().compareTo(b.getKey());
+            }
+        });
+
+        JsonArray packages = new JsonArray();
+        for (Map.Entry<String, List<String>> e : sorted) {
+            JsonObject pkg = new JsonObject();
+            pkg.addProperty("prefix", e.getKey());
+            pkg.addProperty("command_count", e.getValue().size());
+            List<String> examples = new ArrayList<>(e.getValue());
+            Collections.sort(examples);
+            JsonArray exArr = new JsonArray();
+            for (int i = 0; i < Math.min(3, examples.size()); i++) {
+                exArr.add(examples.get(i));
+            }
+            pkg.add("example_commands", exArr);
+            packages.add(pkg);
+        }
+
+        JsonObject result = new JsonObject();
+        result.add("packages", packages);
+        return result;
+    }
+
+    // Extract a package prefix from a Menus.getCommands() class reference.
+    // Values may include constructor args, e.g. 'ij.plugin.Thresholder("mean")';
+    // strip them before splitting. Returns null for unrecognizable shapes.
+    static String packagePrefix(String classRef) {
+        if (classRef == null) return null;
+        String s = classRef.trim();
+        if (s.isEmpty()) return null;
+        int paren = s.indexOf('(');
+        if (paren >= 0) s = s.substring(0, paren).trim();
+        int space = s.indexOf(' ');
+        if (space >= 0) s = s.substring(0, space);
+        if (s.isEmpty()) return null;
+        String[] parts = s.split("\\.");
+        if (parts.length < 2) return null;
+        int segments = TLD_LIKE_ROOTS.contains(parts[0]) ? 3 : 2;
+        // Never include the final segment (the class name itself).
+        if (segments > parts.length - 1) segments = parts.length - 1;
+        if (segments < 1) return null;
+        StringBuilder out = new StringBuilder(parts[0]);
+        for (int i = 1; i < segments; i++) {
+            out.append('.').append(parts[i]);
+        }
+        return out.toString();
     }
 
     // ── private helpers ───────────────────────────────────────────────

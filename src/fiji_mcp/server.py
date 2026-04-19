@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
 from fastmcp import FastMCP
 
@@ -12,6 +14,9 @@ from fiji_mcp.action_log import ActionLog
 from fiji_mcp.fiji_client import FijiClient
 from fiji_mcp.fiji_home import FijiNotFoundError, resolve_fiji_home
 from fiji_mcp.install import JAR_NAME
+
+if TYPE_CHECKING:
+    from fiji_mcp.trace_logger import TraceLogger
 
 mcp = FastMCP(
     "fiji-mcp",
@@ -70,6 +75,7 @@ run_ij_macro, run_script, and run_command all return:
 
 _client: FijiClient | None = None
 _action_log = ActionLog()
+_trace_logger: TraceLogger | None = None  # set in main() when FIJI_MCP_SAVE_TRACE is configured
 
 
 _STARTUP_POLL_TIMEOUT = 30  # seconds to wait for Fiji to start
@@ -82,7 +88,13 @@ async def _get_client() -> FijiClient:
         return _client
 
     _client = FijiClient()
-    _client.on_event(_action_log.append)
+
+    def _on_event(event):
+        _action_log.append(event)
+        if _trace_logger:
+            _trace_logger.log_event(event)
+
+    _client.on_event(_on_event)
 
     # First try: maybe the bridge is already running.
     try:
@@ -122,7 +134,7 @@ async def _get_client() -> FijiClient:
         ) from exc
 
     # Poll for bridge readiness
-    for i in range(_STARTUP_POLL_TIMEOUT):
+    for _ in range(_STARTUP_POLL_TIMEOUT):
         await asyncio.sleep(1)
         try:
             await _client.connect()
@@ -147,6 +159,20 @@ def _python_timeout(hard_timeout_seconds: int) -> float:
     return float(hard_timeout_seconds + _TIMEOUT_BUFFER_SECONDS)
 
 
+async def _trace_step(
+    action: str, params: dict, result: dict, client: FijiClient,
+) -> None:
+    """Log a completed execution step to the trace (if enabled)."""
+    if not _trace_logger:
+        return
+    if result.get("status") == "running":
+        return  # snapshot only after execution finishes
+    try:
+        await _trace_logger.log_step(action, params, result, client)
+    except Exception as exc:
+        print(f"[fiji-mcp] Trace error: {exc}", file=sys.stderr)
+
+
 @mcp.tool
 async def run_ij_macro(
     code: str,
@@ -167,9 +193,11 @@ async def run_ij_macro(
         params["args"] = args
     if soft_timeout_seconds is not None:
         params["soft_timeout_seconds"] = soft_timeout_seconds
-    return await client.send_request(
+    result = await client.send_request(
         "run_ij_macro", params, timeout=_python_timeout(hard_timeout_seconds)
     )
+    await _trace_step("run_ij_macro", params, result, client)
+    return result
 
 
 @mcp.tool
@@ -194,9 +222,11 @@ async def run_script(
         params["args"] = args
     if soft_timeout_seconds is not None:
         params["soft_timeout_seconds"] = soft_timeout_seconds
-    return await client.send_request(
+    result = await client.send_request(
         "run_script", params, timeout=_python_timeout(hard_timeout_seconds)
     )
+    await _trace_step("run_script", params, result, client)
+    return result
 
 
 @mcp.tool
@@ -220,9 +250,11 @@ async def run_command(
         params["args"] = args
     if soft_timeout_seconds is not None:
         params["soft_timeout_seconds"] = soft_timeout_seconds
-    return await client.send_request(
+    result = await client.send_request(
         "run_command", params, timeout=_python_timeout(hard_timeout_seconds)
     )
+    await _trace_step("run_command", params, result, client)
+    return result
 
 
 @mcp.tool
@@ -244,9 +276,11 @@ async def wait_for_execution(
     # limit, so default to 3600s (covers the common 600s hard default with
     # margin). For longer waits, the LLM should chunk via soft_timeout_seconds.
     py_wait = soft_timeout_seconds if soft_timeout_seconds is not None else 3600
-    return await client.send_request(
+    result = await client.send_request(
         "wait_for_execution", params, timeout=_python_timeout(py_wait)
     )
+    await _trace_step("wait_for_execution", params, result, client)
+    return result
 
 
 @mcp.tool
@@ -269,7 +303,9 @@ async def kill_execution(execution_id: str | None = None) -> dict:
 async def list_images() -> dict:
     """List all currently open images in Fiji.
 
-    Returns: {images: [{id, title, width, height}]}
+    Returns: {images: [{id, title, width, height}], active?: title}
+    The ``active`` field names the frontmost image (same value as
+    ``active_image`` in execution envelopes); omitted when no image is open.
     """
     client = await _get_client()
     return await client.send_request("list_images")
@@ -373,11 +409,57 @@ async def get_log(count: int = 50) -> dict:
 async def status() -> dict:
     """Get Fiji bridge status.
 
-    Returns: {connected, fiji_version, uptime_s, action_count, enabled_categories}
+    Returns: {connected, fiji_version, uptime_s, action_count,
+              enabled_categories, trace?}
+    When session tracing is enabled, ``trace`` carries ``{uuid, dir}``
+    so the trace UUID is discoverable from the transcript itself
+    (handy for pairing traces with Claude Code session logs).
     """
     client = await _get_client()
     result = await client.send_request("status")
-    return {**result, "action_count": _action_log.count}
+    payload = {**result, "action_count": _action_log.count}
+    if _trace_logger is not None:
+        payload["trace"] = {
+            "uuid": _trace_logger.trace_uuid,
+            "dir": str(_trace_logger.trace_dir),
+        }
+    return payload
+
+
+@mcp.tool
+async def link_session(
+    session_path: str | None = None,
+    session_id: str | None = None,
+    label: str | None = None,
+) -> dict:
+    """Link this trace to a Claude Code session log.
+
+    Writes a back-reference into the trace directory's ``session.json``
+    under ``links`` so downstream tooling (e.g. the ai-trace-videos merge
+    script) can fuse the trace with the session transcript. Call at the
+    end of a session. Provide whichever of ``session_path`` / ``session_id``
+    / ``label`` you have — at least one is expected.
+
+    Returns: {status, trace_uuid, trace_dir, linked} or
+             {status: "no-trace"} when tracing is disabled.
+    """
+    if _trace_logger is None:
+        return {
+            "status": "no-trace",
+            "message": "Session tracing is not enabled "
+            "(set FIJI_MCP_SAVE_TRACE or pass --save-trace).",
+        }
+    link = _trace_logger.link_session(
+        session_path=session_path,
+        session_id=session_id,
+        label=label,
+    )
+    return {
+        "status": "ok",
+        "trace_uuid": _trace_logger.trace_uuid,
+        "trace_dir": str(_trace_logger.trace_dir),
+        "linked": link,
+    }
 
 
 @mcp.tool
@@ -395,19 +477,36 @@ async def set_event_categories(categories: list[str]) -> dict:
 
 @mcp.tool
 async def get_fiji_info() -> dict:
-    """Get Fiji installation paths.
+    """Get Fiji installation paths and detected plugin packages.
 
     To install a plugin, download or copy its .jar file into the plugins_dir
     and restart Fiji.
 
-    Returns: {fiji_home, plugins_dir, java_version}
+    When the bridge is already connected, plugin_packages lists Java
+    package prefixes grouped from Menus.getCommands() — e.g. inra.ijpb
+    (MorphoLibJ), sc.fiji.trackmate, net.haesleinhuepf.clij2. Scan these
+    before designing a pipeline: third-party plugins often offer better
+    algorithms than the IJ1 stdlib for the same task.
+
+    Returns: {fiji_home, plugins_dir, java_version,
+              plugin_packages?: [{prefix, command_count, example_commands}],
+              plugin_packages_error?: str}
+    plugin_packages is omitted when the bridge is not yet connected;
+    any later tool call will start it, then this tool reports the list.
     """
     info = resolve_fiji_home()
-    return {
+    result: dict = {
         "fiji_home": str(info.path),
         "plugins_dir": str(info.plugins_dir),
         "java_version": info.java_version,
     }
+    if _client is not None and _client.connected:
+        try:
+            pkgs = await _client.send_request("list_plugin_packages", timeout=10.0)
+            result["plugin_packages"] = pkgs.get("packages", [])
+        except Exception as exc:
+            result["plugin_packages_error"] = str(exc)
+    return result
 
 
 @mcp.tool
@@ -473,7 +572,39 @@ def _events_to_macro(events: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _register_trace_only_tools() -> None:
+    """Register MCP tools that only make sense when tracing is enabled.
+
+    Called from ``main()`` after ``_trace_logger`` is constructed so these
+    tools are advertised to the client only in trace mode, keeping the
+    non-trace tool list uncluttered.
+    """
+
+    @mcp.tool
+    async def add_trace_note(message: str, label: str | None = None) -> dict:
+        """Append a free-form note to the active trace timeline.
+
+        Only available when session tracing is enabled (``FIJI_MCP_SAVE_TRACE``
+        is set). Use to mark phases ("starting segmentation"), record
+        observations ("clumped nuclei — watershed helps"), or flag
+        checkpoints the reviewer should notice. The note is written to the
+        trace's ``events.jsonl`` with ``type="annotation"`` and a UTC ISO
+        timestamp that aligns with Claude Code session timestamps.
+
+        Returns: {status, record}
+        """
+        assert _trace_logger is not None  # registration is gated on trace mode
+        record = _trace_logger.add_annotation(message, label=label)
+        return {"status": "ok", "record": record}
+
+
 def main():
+    global _trace_logger
+    trace_dir = os.environ.get("FIJI_MCP_SAVE_TRACE")
+    if trace_dir:
+        from fiji_mcp.trace_logger import TraceLogger
+        _trace_logger = TraceLogger(trace_dir)
+        _register_trace_only_tools()
     mcp.run()
 
 

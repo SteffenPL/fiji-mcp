@@ -27,6 +27,7 @@ public class RequestHandler {
             case "run_script":            return scriptExecutor.runScript(params);
             case "run_command":           return scriptExecutor.runCommand(params);
             case "list_commands":         return scriptExecutor.listCommands(params);
+            case "list_plugin_packages":  return scriptExecutor.listPluginPackages();
             case "list_images":           return imageService.listImages();
             case "get_image_info":        return imageService.getImageInfo(params);
             case "save_image":            return imageService.saveImage(params);

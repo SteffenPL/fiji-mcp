@@ -397,12 +397,18 @@ async def get_roi_manager() -> dict:
 
 @mcp.tool
 async def get_log(count: int = 50) -> dict:
-    """Get recent entries from the Fiji log.
+    """Get recent entries from the Fiji log, with consecutive duplicate lines collapsed.
 
     Returns: {lines: [str], total}
     """
     client = await _get_client()
-    return await client.send_request("get_log", {"count": count})
+    raw = await client.send_request("get_log", {"count": count})
+    lines: list[str] = raw.get("lines", [])
+    deduped: list[str] = []
+    for line in lines:
+        if not deduped or line != deduped[-1]:
+            deduped.append(line)
+    return {"lines": deduped, "total": len(deduped)}
 
 
 @mcp.tool

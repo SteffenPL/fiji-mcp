@@ -54,6 +54,23 @@ ImageJ carries global state that silently affects operations:
 - **Active image**: commands operate on whichever image is frontmost.
   Because the user may also be clicking around, start scripts with
   selectWindow("title") to lock focus to the intended image.
+- **LUT polarity**: get_image_info and get_thumbnail return preview_inverted.
+  When true, what looks bright in the preview has low raw pixel values and
+  vice versa. Threshold ranges must be flipped: to select visually bright
+  regions use 0..T, not T..255. Failing to account for this silently segments
+  the background instead of the foreground.
+
+## Common pitfalls
+- **Segmenting background instead of foreground**: caused by an inverted LUT
+  (preview_inverted=true) combined with the wrong threshold direction. Always
+  check preview_inverted from get_image_info before setting a threshold.
+- **Watershed over-splitting**: binary watershed splits touching objects but
+  also creates tiny fragment particles at saddle points. Use a minimum particle
+  size filter in Analyze Particles (size=200-Infinity or similar) to discard
+  fragments and recover the correct object count.
+- **Stale particle counts**: Analyze Particles appends to the shared Results
+  table. Without run("Clear Results") beforehand, counts from previous runs
+  accumulate and produce inflated totals.
 
 ## Execution envelope
 run_ij_macro, run_script, and run_command all return:
@@ -315,7 +332,12 @@ async def list_images() -> dict:
 async def get_image_info(title: str | None = None, image_id: int | None = None) -> dict:
     """Get detailed information about an image, identified by title or id.
 
-    Returns: {title, width, height, depth, channels, frames, type, path?}
+    Returns: {title, width, height, depth, channels, frames, type, path?,
+              preview_inverted}
+    preview_inverted: true when the LUT is inverted, meaning bright pixels in
+    the preview correspond to low raw values and dark pixels to high raw values.
+    When true, threshold ranges must be flipped (e.g. use 0..T to select
+    visually bright regions, not T..255).
     """
     client = await _get_client()
     params: dict = {}
@@ -351,8 +373,9 @@ async def get_thumbnail(
     LUT, brightness/contrast, overlays, and ROI outlines are baked in by
     default (apply_lut=True), so the thumbnail matches what the user sees.
 
-    Returns: {path, width, height, is_inverted}
-    is_inverted indicates the LUT is inverted (bright = background).
+    Returns: {path, width, height, preview_inverted}
+    preview_inverted: true when the LUT is inverted — bright pixels in the
+    preview correspond to low raw values. Flip your threshold range accordingly.
     """
     client = await _get_client()
     params: dict = {"max_size": max_size, "apply_lut": apply_lut}

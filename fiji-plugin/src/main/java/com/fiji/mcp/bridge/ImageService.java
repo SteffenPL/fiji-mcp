@@ -56,6 +56,7 @@ public class ImageService {
         result.addProperty("channels", imp.getNChannels());
         result.addProperty("frames", imp.getNFrames());
         result.addProperty("type", typeName(imp.getType()));
+        result.addProperty("preview_inverted", imp.isInvertedLut());
         if (imp.getOriginalFileInfo() != null
                 && imp.getOriginalFileInfo().directory != null) {
             result.addProperty("path",
@@ -149,7 +150,7 @@ public class ImageService {
         result.addProperty("path", path);
         result.addProperty("width", snapshot.getProcessor().getWidth());
         result.addProperty("height", snapshot.getProcessor().getHeight());
-        result.addProperty("is_inverted", imp.isInvertedLut());
+        result.addProperty("preview_inverted", imp.isInvertedLut());
         return result;
     }
 

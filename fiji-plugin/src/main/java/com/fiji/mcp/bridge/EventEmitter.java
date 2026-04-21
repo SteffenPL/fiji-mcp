@@ -28,8 +28,12 @@ public class EventEmitter implements ij.ImageListener, ij.gui.RoiListener {
     // Track command duration via IJ2 module events
     private final Map<Object, Long> moduleStartTimes = new ConcurrentHashMap<>();
 
+    // Track Results table state for change detection
+    private volatile int lastResultsRowCount = -1;
+    private volatile String lastResultsTailHash = "";
+
     public EventEmitter() {
-        enabledCategories.addAll(java.util.Arrays.asList("command", "image", "roi", "log"));
+        enabledCategories.addAll(java.util.Arrays.asList("command", "image", "roi", "log", "results"));
     }
 
     public void setEventSink(Consumer<String> sink) {
@@ -197,6 +201,7 @@ public class EventEmitter implements ij.ImageListener, ij.gui.RoiListener {
     // ── IJ1 IJEventListener (tool/color changes) ──────────────────
 
     private void onIJEvent(int eventID) {
+        checkGlobalState();
         if (!enabledCategories.contains("tool")) return;
 
         // Detect tool changes by comparing current tool name
@@ -299,6 +304,32 @@ public class EventEmitter implements ij.ImageListener, ij.gui.RoiListener {
             arr.add(cat);
         }
         return arr;
+    }
+
+    // ── Global state watcher ───────────────────────────────────────
+
+    private void checkGlobalState() {
+        if (!enabledCategories.contains("results")) return;
+        ij.measure.ResultsTable rt = ij.measure.ResultsTable.getResultsTable();
+        int rowCount = (rt == null) ? 0 : rt.size();
+
+        // Snapshot the last 20 rows for change detection and event payload.
+        JsonObject snap = (rowCount > 0)
+                ? ImageService.snapshotResultsTable(20, 20, Math.max(0, rowCount - 20))
+                : null;
+        String tailHash = (snap != null) ? snap.toString() : "";
+
+        if (rowCount != lastResultsRowCount || !tailHash.equals(lastResultsTailHash)) {
+            lastResultsRowCount = rowCount;
+            lastResultsTailHash = tailHash;
+
+            JsonObject data = new JsonObject();
+            data.addProperty("row_count", rowCount);
+            if (snap != null) {
+                data.add("tail", snap);
+            }
+            emit("results", "results_table_changed", data);
+        }
     }
 
     // ── Internal ───────────────────────────────────────────────────

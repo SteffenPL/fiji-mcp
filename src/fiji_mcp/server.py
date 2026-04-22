@@ -55,15 +55,75 @@ ImageJ carries global state that silently affects operations:
   Because the user may also be clicking around, start scripts with
   selectWindow("title") to lock focus to the intended image.
 - **LUT polarity**: get_image_info and get_thumbnail return preview_inverted.
-  When true, what looks bright in the preview has low raw pixel values and
-  vice versa. Threshold ranges must be flipped: to select visually bright
-  regions use 0..T, not T..255. Failing to account for this silently segments
-  the background instead of the foreground.
+  When true, the display LUT is inverted: low raw pixel values appear bright
+  and high raw values appear dark. This is purely a display property — it
+  does NOT change the underlying pixel data.
+- **BlackBackground option**: setOption("BlackBackground", true/false) is
+  global state that affects Convert to Mask, Make Binary, and all binary
+  morphology commands (Erode, Dilate, Open, Close-, Watershed, Skeletonize).
+
+## LUT, thresholds, and binary operations
+How the inverted LUT interacts with each operation category:
+
+**setThreshold(lo, hi)** — operates on raw pixel values; the LUT has no
+effect. setThreshold(128, 255) always selects pixels with raw values
+128–255, regardless of how they are displayed.
+
+**setAutoThreshold("method")** — computes a threshold on raw values, BUT
+the "dark" keyword and which side of the threshold is selected operate
+in DISPLAY space. ImageJ internally checks isInvertedLut() and flips the
+selection direction when the LUT is inverted. Decision rule:
+  - Objects look BRIGHT, background looks DARK → "method dark"
+  - Objects look DARK, background looks BRIGHT  → "method" (no dark)
+This works regardless of LUT state — just reason about what you SEE in
+the thumbnail.
+
+**Filters** (Gaussian Blur, Median, etc.) — operate on raw pixel values
+only; the LUT has no effect.
+
+**Convert to Mask / Make Binary** — always assign raw 255 to the thresholded
+region and raw 0 to the rest. The BlackBackground option controls only the
+LUT on the output mask:
+  - BlackBackground=true  → normal LUT (foreground=white, background=black)
+  - BlackBackground=false → inverted LUT (foreground=black, background=white)
+The raw pixel values are identical either way.
+
+**Binary morphology** (Erode, Dilate, Open, Close-, Watershed, Skeletonize) —
+determines which pixels are "foreground" by combining BlackBackground with
+the image's LUT. Effective rule: foreground is raw 255 when
+(BlackBackground XOR InvertedLUT) is true. This means an inverted LUT
+flips the interpretation of BlackBackground, so pipelines that use
+Convert to Mask (which sets the LUT to match BlackBackground) stay
+self-consistent. But changing BlackBackground mid-pipeline, or stripping
+the LUT (e.g. by saving as plain TIFF and reopening), silently inverts
+which pixels are treated as objects.
+
+**Analyze Particles** — on binary images, auto-detects polarity from
+edge/corner pixels and is robust to both LUT and BlackBackground settings.
+On non-binary (thresholded) images, it uses the threshold range directly.
+
+**run("Invert")** — flips raw pixel values (v → 255−v). Does not touch the
+LUT. **run("Invert LUT")** — flips only the display lookup table. Does
+not touch raw pixel values. These are independent operations.
+
+## LUT-safe thresholding recipe
+1. get_thumbnail → look at the image, note preview_inverted
+2. Decide: do your objects of interest look BRIGHT or DARK in the display?
+3. setOption("BlackBackground", true)
+4. Threshold:
+   - Objects look BRIGHT → setAutoThreshold("method dark")
+   - Objects look DARK  → setAutoThreshold("method")   (no dark)
+   - Or use explicit setThreshold(lo, hi) on raw pixel values
+   Common mistake: forgetting "dark" for bright objects (e.g. fluorescence).
+   Without "dark", the LOW histogram side is selected — that is the
+   dark background, not the bright objects.
+5. run("Convert to Mask") — with BB=true, objects will be white (255)
+6. get_thumbnail of the mask → verify white regions match your objects.
+   If inverted, flip the "dark" keyword and redo from step 4.
 
 ## Common pitfalls
-- **Segmenting background instead of foreground**: caused by an inverted LUT
-  (preview_inverted=true) combined with the wrong threshold direction. Always
-  check preview_inverted from get_image_info before setting a threshold.
+- **Segmenting background instead of foreground**: follow the recipe above.
+  Most common cause: omitting "dark" for bright objects (e.g. fluorescence).
 - **Watershed over-splitting**: binary watershed splits touching objects but
   also creates tiny fragment particles at saddle points. Use a minimum particle
   size filter in Analyze Particles (size=200-Infinity or similar) to discard
@@ -334,10 +394,10 @@ async def get_image_info(title: str | None = None, image_id: int | None = None) 
 
     Returns: {title, width, height, depth, channels, frames, type, path?,
               preview_inverted}
-    preview_inverted: true when the LUT is inverted, meaning bright pixels in
-    the preview correspond to low raw values and dark pixels to high raw values.
-    When true, threshold ranges must be flipped (e.g. use 0..T to select
-    visually bright regions, not T..255).
+    preview_inverted: true when the display LUT is inverted — low raw pixel
+    values appear bright and high raw values appear dark. This is a display
+    property only — but it DOES affect setAutoThreshold's "dark" keyword
+    direction. See the "LUT-safe thresholding recipe" in server instructions.
     """
     client = await _get_client()
     params: dict = {}
@@ -374,8 +434,9 @@ async def get_thumbnail(
     default (apply_lut=True), so the thumbnail matches what the user sees.
 
     Returns: {path, width, height, preview_inverted}
-    preview_inverted: true when the LUT is inverted — bright pixels in the
-    preview correspond to low raw values. Flip your threshold range accordingly.
+    preview_inverted: true when the display LUT is inverted — low raw values
+    appear bright. This affects setAutoThreshold's "dark" keyword direction.
+    See the "LUT-safe thresholding recipe" in server instructions.
     """
     client = await _get_client()
     params: dict = {"max_size": max_size, "apply_lut": apply_lut}

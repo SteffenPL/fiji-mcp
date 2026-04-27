@@ -1,4 +1,9 @@
+
+
+
 # fiji-mcp
+
+https://github.com/user-attachments/assets/2933af17-6cb6-4a4c-a7e8-6c1391c49db7
 
 > **Prior art & related projects** — several other projects bridge bioimage tools with LLMs via MCP.
 > This project was developed independently but shares the same problem space:

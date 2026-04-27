@@ -56,3 +56,5 @@ tests/evals-internal/
 
 # Internal design docs (kept in private repo)
 docs/superpowers/
+results
+fiji-mcp-outputs

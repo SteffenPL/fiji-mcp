@@ -8,6 +8,7 @@ https://github.com/user-attachments/assets/2933af17-6cb6-4a4c-a7e8-6c1391c49db7
 > **Prior art & related projects** — several other projects bridge bioimage tools with LLMs via MCP.
 > This project was developed independently but shares the same problem space:
 >
+> - [fiji/fiji-llm project](https://github.com/fiji/fiji-llm) - Chat with AI assistants directly in Fiji to get help with image analysis, scripting, macros, and general questions.
 > - [fiji_mcp](https://github.com/NicoKiaru/fiji_mcp) (NicoKiaru) — Fiji MCP via PyImageJ (in-process, Groovy)
 > - [fiji-mcp-bridge](https://github.com/kusumotok/fiji-mcp-bridge) (kusumotok) — Fiji MCP via TCP sockets, curated tool wrappers
 > - [napari-mcp](https://github.com/royerlab/napari-mcp) (royerlab) — napari MCP server, PyPI published

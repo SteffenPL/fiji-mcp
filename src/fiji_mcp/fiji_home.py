@@ -140,7 +140,7 @@ def _find_launcher(fiji_root: Path) -> Path | None:
                 if f.name.startswith("ImageJ"):
                     return f
     elif system == "Windows":
-        for name in ("fiji.exe", "ImageJ-win64.exe"):
+        for name in ("fiji.exe", "fiji-windows-x64.exe", "ImageJ-win64.exe"):
             p = fiji_root / name
             if p.is_file():
                 return p
